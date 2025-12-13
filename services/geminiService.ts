@@ -4,9 +4,13 @@ let ai: GoogleGenAI | null = null;
 
 const getAiClient = () => {
   if (!ai) {
-    // Lazy initialization to avoid top-level crashes if process is undefined during module load
-    const apiKey = process.env.API_KEY || ''; 
-    ai = new GoogleGenAI({ apiKey });
+    // Safety check: process might not be defined in standard browser environments
+    // This prevents the "ReferenceError: process is not defined" crash
+    const apiKey = (typeof process !== 'undefined' && process.env && process.env.API_KEY) ? process.env.API_KEY : '';
+    
+    if (apiKey) {
+      ai = new GoogleGenAI({ apiKey });
+    }
   }
   return ai;
 };
@@ -14,6 +18,11 @@ const getAiClient = () => {
 export const generateLevelLore = async (level: number, isBoss: boolean): Promise<string> => {
   try {
     const client = getAiClient();
+    if (!client) {
+      // Fallback if no API key is present
+      return `第 ${level} 关 - 准备战斗 (系统离线模式)`;
+    }
+
     const prompt = `
       为一款黑暗风格的3D动作网页游戏写一段简短的中文介绍（1句话）。
       当前是第 ${level} 关。
@@ -37,6 +46,8 @@ export const generateLevelLore = async (level: number, isBoss: boolean): Promise
 export const generateVictoryMessage = async (): Promise<string> => {
     try {
         const client = getAiClient();
+        if (!client) return "所有试炼已完成。胜利！";
+
         const response = await client.models.generateContent({
           model: 'gemini-2.5-flash',
           contents: "为一位拯救了数字世界的英雄写一句史诗般的中文胜利祝贺语。",
