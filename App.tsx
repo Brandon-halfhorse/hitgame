@@ -3,7 +3,8 @@ import { GameCanvas } from './components/GameCanvas';
 import { GameState, GameStatus, Entity, EntityType, FloatingText } from './types';
 import { CANVAS_WIDTH, CANVAS_HEIGHT, PLAYER_SIZE, PLAYER_SPEED, ATTACK_RANGE, LEVEL_CONFIG, PLAYER_IMG, ENEMY_IMG_BASE, ATTACK_COOLDOWN, ENEMY_SIZE, BOSS_SIZE, BOSS_IMG } from './constants';
 import { generateLevelLore, generateVictoryMessage } from './services/geminiService';
-import { Play, RotateCcw, Shield, Heart, Skull, Zap } from 'lucide-react';
+import { audioManager } from './services/audioService';
+import { Play, RotateCcw, Shield, Heart, Skull, Zap, Volume2 } from 'lucide-react';
 
 export default function App() {
   // --- State ---
@@ -124,6 +125,7 @@ export default function App() {
     if (input.attack && (!newPlayer.attackCooldown || newPlayer.attackCooldown === 0)) {
         newPlayer.isAttacking = true;
         newPlayer.attackCooldown = ATTACK_COOLDOWN;
+        audioManager.playSfx('attack'); // Attack Sound
         
         // Hit detection
         const attackCenter = {
@@ -145,6 +147,7 @@ export default function App() {
 
                 // Visuals
                 spawnFloatingText(enemy.pos.x + enemy.size/2, enemy.pos.y, `-${dmg}`, '#ef4444', newParticles);
+                audioManager.playSfx('hit'); // Hit Sound
                 
                 // Knockback
                 const knockbackDir = newPlayer.facing === 'right' ? 1 : -1;
@@ -197,6 +200,7 @@ export default function App() {
                 newPlayer.hitFlashTimer = 10;
                 newShake = 15; // Hard shake when player hit
                 spawnFloatingText(newPlayer.pos.x + newPlayer.size/2, newPlayer.pos.y, `-${enemyDmg}`, '#ffffff', newParticles);
+                audioManager.playSfx('damage'); // Player Hurt Sound
             }
         }
     });
@@ -205,10 +209,14 @@ export default function App() {
     if (newPlayer.health <= 0) {
         newPlayer.health = 0;
         newStatus = GameStatus.GAME_OVER;
+        audioManager.stopBgm();
+        audioManager.playSfx('gameover');
     } else if (newEnemies.length === 0) {
         // Level cleared
         if (currentState.level >= 5) {
             newStatus = GameStatus.VICTORY;
+            audioManager.stopBgm();
+            audioManager.playSfx('victory');
         } else {
             newStatus = GameStatus.LEVEL_TRANSITION;
         }
@@ -243,6 +251,10 @@ export default function App() {
   // --- Game Flow Control ---
 
   const startGame = async () => {
+    // Init Audio Context on user gesture
+    audioManager.init();
+    audioManager.playBgm(1);
+
     // Reset player
     const freshPlayer = {
         ...stateRef.current.player,
@@ -256,6 +268,9 @@ export default function App() {
   };
 
   const startLevel = (levelNum: number, playerState: Entity, score: number, lore: string) => {
+    // Update BGM Intensity
+    audioManager.playBgm(levelNum);
+
     const config = LEVEL_CONFIG[levelNum as keyof typeof LEVEL_CONFIG];
     
     // Spawn Enemies
@@ -460,8 +475,9 @@ export default function App() {
       </div>
 
       {/* Controls Hint Footer */}
-      <div className="mt-6 text-slate-500 text-xs font-mono tracking-widest">
-        SYSTEM VER: 5.0.2 // LATENCY: 0ms // SECURE CONNECTION ESTABLISHED
+      <div className="mt-6 flex justify-between w-[800px] text-slate-500 text-xs font-mono tracking-widest">
+        <span>SYSTEM VER: 5.0.2 // LATENCY: 0ms</span>
+        <span className="flex items-center gap-2"><Volume2 size={12} /> AUDIO SYNTHESIZER: ONLINE</span>
       </div>
 
     </div>
