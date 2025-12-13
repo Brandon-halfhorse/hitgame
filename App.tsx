@@ -276,7 +276,8 @@ export default function App() {
             maxHealth: config.enemyHealth,
             damage: 10,
             facing: x < CANVAS_WIDTH/2 ? 'right' : 'left',
-            visualUrl: `${ENEMY_IMG_BASE}?random=${i}${levelNum}`
+            // Fix: Use '&' because base url already has '?'
+            visualUrl: `${ENEMY_IMG_BASE}&random=${i}${levelNum}`
         });
     }
 

@@ -1,9 +1,19 @@
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+let ai: GoogleGenAI | null = null;
+
+const getAiClient = () => {
+  if (!ai) {
+    // Lazy initialization to avoid top-level crashes if process is undefined during module load
+    const apiKey = process.env.API_KEY || ''; 
+    ai = new GoogleGenAI({ apiKey });
+  }
+  return ai;
+};
 
 export const generateLevelLore = async (level: number, isBoss: boolean): Promise<string> => {
   try {
+    const client = getAiClient();
     const prompt = `
       为一款黑暗风格的3D动作网页游戏写一段简短的中文介绍（1句话）。
       当前是第 ${level} 关。
@@ -12,7 +22,7 @@ export const generateLevelLore = async (level: number, isBoss: boolean): Promise
       不要使用Markdown，只返回纯文本。
     `;
 
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
     });
@@ -26,7 +36,8 @@ export const generateLevelLore = async (level: number, isBoss: boolean): Promise
 
 export const generateVictoryMessage = async (): Promise<string> => {
     try {
-        const response = await ai.models.generateContent({
+        const client = getAiClient();
+        const response = await client.models.generateContent({
           model: 'gemini-2.5-flash',
           contents: "为一位拯救了数字世界的英雄写一句史诗般的中文胜利祝贺语。",
         });
