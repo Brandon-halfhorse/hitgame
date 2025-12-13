@@ -17,7 +17,7 @@ export default function App() {
       speed: PLAYER_SPEED,
       health: 100,
       maxHealth: 100,
-      damage: 15,
+      damage: 20,
       weapon: WeaponType.FISTS,
       attackCooldown: 0,
       maxAttackCooldown: 20,
@@ -36,6 +36,8 @@ export default function App() {
     loreText: "准备好加入紫岚战队了吗？按开始键进入。",
     shakeIntensity: 0
   });
+
+  const [isCelebrating, setIsCelebrating] = useState(false);
 
   // Refs for loop performance
   const stateRef = useRef<GameState>(gameState);
@@ -114,6 +116,9 @@ export default function App() {
   const updateGame = () => {
     const currentState = stateRef.current;
     if (currentState.status !== GameStatus.PLAYING) return;
+    
+    // Prevent updates during celebration delay
+    if (isCelebrating) return; 
 
     const input = inputRef.current;
     let newPlayer = { ...currentState.player };
@@ -198,8 +203,8 @@ export default function App() {
             const dist = Math.hypot(newPlayer.pos.x - enemy.pos.x, newPlayer.pos.y - enemy.pos.y);
             if (dist < 100) {
                 // Check if behind
-                const isBehind = (newPlayer.facing === enemy.facing); // Crude check: same facing direction means behind
-                const dmg = isBehind ? newPlayer.damage * 4 : newPlayer.damage; // 4x DMG backstab
+                const isBehind = (newPlayer.facing === enemy.facing); 
+                const dmg = isBehind ? newPlayer.damage * 4 : newPlayer.damage; 
                 
                 enemy.health -= dmg;
                 enemy.hitFlashTimer = 20;
@@ -256,7 +261,6 @@ export default function App() {
             let targetY = newPlayer.pos.y;
             let seekingWeapon = false;
 
-            // If enemy is unarmed (Fists) and there is a weapon, go for it
             if (enemy.weapon === WeaponType.FISTS) {
                 const closestWeapon = newItems.find(i => i.type === 'WEAPON');
                 if (closestWeapon) {
@@ -276,19 +280,18 @@ export default function App() {
             enemy.pos.y += (Math.sin(angle) * enemy.speed) + wiggle;
             enemy.facing = Math.cos(angle) > 0 ? 'right' : 'left';
 
-            // Enemy Collision (Weapon Pickup or Player Damage)
+            // Enemy Collision
             if (seekingWeapon) {
                  const d = Math.hypot(enemy.pos.x - targetX, enemy.pos.y - targetY);
                  if (d < 30) {
-                     // Enemy picks up weapon!
                      const wItemIndex = newItems.findIndex(i => i.type === 'WEAPON');
                      if (wItemIndex !== -1) {
                          const w = newItems[wItemIndex];
                          if (w.subtype) {
                              enemy.weapon = w.subtype;
                              const stats = WEAPON_STATS[w.subtype];
-                             enemy.damage = stats.damage * 0.5; // Enemies do less dmg with same weapon
-                             enemy.maxAttackCooldown = stats.cooldown + 20; // Slower than player
+                             enemy.damage = stats.damage * 0.5; 
+                             enemy.maxAttackCooldown = stats.cooldown + 30; // Enemy attacks much slower than player (Nerfed)
                              spawnFloatingText(enemy.pos.x, enemy.pos.y, "EQUIPPED!", "#fbbf24", newParticles);
                              newItems.splice(wItemIndex, 1);
                          }
@@ -298,7 +301,8 @@ export default function App() {
                 // Attack Player
                 const distToPlayer = Math.hypot((newPlayer.pos.x + newPlayer.size/2) - (enemy.pos.x + enemy.size/2), (newPlayer.pos.y + newPlayer.size/2) - (enemy.pos.y + enemy.size/2));
                 if (distToPlayer < (newPlayer.size/2 + enemy.size/3)) {
-                     if (frameCountRef.current % (enemy.maxAttackCooldown || 40) === 0) {
+                     // Slower attack rate for enemies
+                     if (frameCountRef.current % (enemy.maxAttackCooldown || 60) === 0) {
                         const enemyDmg = enemy.damage;
                         newPlayer.health -= enemyDmg;
                         newPlayer.hitFlashTimer = 10;
@@ -312,7 +316,6 @@ export default function App() {
         } else {
             // Died
             newScore += 100;
-            // Drop Loot
             spawnItem(enemy.pos.x, enemy.pos.y, 'CURRENCY', undefined, newItems);
             spawnFloatingText(enemy.pos.x, enemy.pos.y, "击杀!", '#fbbf24', newParticles);
         }
@@ -326,12 +329,23 @@ export default function App() {
         audioManager.stopBgm();
         audioManager.playSfx('gameover');
     } else if (newEnemies.length === 0) {
-        if (currentState.level >= 5) {
-            newStatus = GameStatus.VICTORY;
-            audioManager.stopBgm();
+        // TRIGGER VICTORY DANCE (Delay transition)
+        if (!isCelebrating) {
+            setIsCelebrating(true);
             audioManager.playSfx('victory');
-        } else {
-            newStatus = GameStatus.LEVEL_TRANSITION;
+            
+            // Wait 2 seconds for celebration animation then transition
+            setTimeout(() => {
+                setIsCelebrating(false);
+                if (currentState.level >= 5) {
+                    newStatus = GameStatus.VICTORY;
+                    audioManager.stopBgm();
+                } else {
+                    newStatus = GameStatus.LEVEL_TRANSITION;
+                }
+                // Need to force update state inside timeout because it's a closure
+                setGameState(prev => ({ ...prev, status: newStatus }));
+            }, 2000);
         }
     }
 
@@ -342,7 +356,8 @@ export default function App() {
         enemies: newEnemies,
         items: newItems,
         particles: newParticles,
-        status: newStatus,
+        // Only update status if we aren't waiting for the celebration to finish
+        status: isCelebrating ? prev.status : newStatus, 
         score: newScore,
         currency: newCurrency,
         shakeIntensity: newShake
@@ -359,14 +374,14 @@ export default function App() {
         loopRef.current = requestAnimationFrame(gameLoop);
     }
     return () => cancelAnimationFrame(loopRef.current);
-  }, [gameState.status]);
+  }, [gameState.status, isCelebrating]); // Add isCelebrating dependency
 
 
   // --- Logic ---
   const startGame = async () => {
     audioManager.init();
     audioManager.playBgm(1);
-    const freshPlayer = { ...stateRef.current.player, health: 100, weapon: WeaponType.FISTS, damage: 15, pos: { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 } };
+    const freshPlayer = { ...stateRef.current.player, health: 100, weapon: WeaponType.FISTS, damage: 20, pos: { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 } };
     const lore = await generateLevelLore(1, false);
     startLevel(1, freshPlayer, 0, 0, lore);
   };
@@ -387,12 +402,12 @@ export default function App() {
             type: EntityType.ENEMY_MELEE,
             pos: { x, y },
             size: ENEMY_SIZE,
-            speed: config.enemySpeed + (Math.random() * 0.5),
+            speed: config.enemySpeed + (Math.random() * 0.3),
             health: config.enemyHealth,
             maxHealth: config.enemyHealth,
-            damage: 10,
+            damage: 8, // Reduced damage
             weapon: WeaponType.FISTS,
-            maxAttackCooldown: 60,
+            maxAttackCooldown: 80, // Slower attacks
             attackCooldown: 0,
             facing: x < CANVAS_WIDTH/2 ? 'right' : 'left',
             visualUrl: `${ENEMY_IMG_BASE}&random=${i}${levelNum}`
@@ -408,9 +423,9 @@ export default function App() {
             speed: config.enemySpeed * 0.8,
             health: config.enemyHealth * 5, 
             maxHealth: config.enemyHealth * 5,
-            damage: 25,
+            damage: 20,
             weapon: WeaponType.HAMMER, // Boss starts with Hammer
-            maxAttackCooldown: 60,
+            maxAttackCooldown: 90,
             attackCooldown: 0,
             facing: 'left',
             visualUrl: BOSS_IMG
@@ -429,7 +444,7 @@ export default function App() {
             id: itemIdCounter.current,
             type: 'WEAPON',
             subtype: randomWeapon,
-            pos: { x: CANVAS_WIDTH / 2 - 20, y: CANVAS_HEIGHT / 2 + 100 }, // Slightly offset so player doesn't grab it instantly on spawn
+            pos: { x: CANVAS_WIDTH / 2 - 20, y: CANVAS_HEIGHT / 2 + 100 }, 
             size: ITEM_SIZE
         });
     }
@@ -447,6 +462,7 @@ export default function App() {
         loreText: lore,
         shakeIntensity: 0
     });
+    setIsCelebrating(false);
   };
 
   const nextLevel = async () => {
@@ -533,13 +549,14 @@ export default function App() {
             width={CANVAS_WIDTH} 
             height={CANVAS_HEIGHT} 
             shakeIntensity={gameState.shakeIntensity}
+            isCelebrating={isCelebrating}
         />
         
         {/* Status Overlays */}
         {gameState.status === GameStatus.IDLE && (
             <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center p-8 text-center backdrop-blur-sm z-30">
                 <h1 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-blue-400 to-cyan-300 mb-6 drop-shadow-lg">
-                    现实回响：紫岚对决
+                    现实回响：街头战线
                 </h1>
                 <p className="text-gray-200 mb-8 max-w-lg border-l-4 border-purple-500 pl-4 bg-white/5 p-4 rounded text-left">
                     {gameState.loreText}
@@ -579,7 +596,7 @@ export default function App() {
       </div>
       
        <div className="mt-4 flex justify-between w-[800px] text-slate-500 text-xs font-mono">
-        <span>TACTICAL OS v2.1</span>
+        <span>NEON CITY OS v3.0</span>
         <span className="flex items-center gap-2"><Volume2 size={12} /> AUDIO: ACTIVE</span>
       </div>
     </div>
