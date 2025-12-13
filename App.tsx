@@ -27,7 +27,7 @@ export default function App() {
     score: 0,
     status: GameStatus.IDLE,
     gameBounds: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
-    loreText: "准备好迎接试炼了吗？按开始键进入。",
+    loreText: "准备好加入紫岚战队了吗？按开始键进入。",
     shakeIntensity: 0
   });
 
