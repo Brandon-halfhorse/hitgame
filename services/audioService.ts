@@ -5,11 +5,11 @@ export class AudioController {
 
   init() {
     if (!this.ctx) {
-      // @ts-ignore - Handle older browser prefixes if necessary
+      // @ts-ignore
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       this.ctx = new AudioContextClass();
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.value = 0.25; // Master volume
+      this.masterGain.gain.value = 0.25; 
       this.masterGain.connect(this.ctx.destination);
     }
     if (this.ctx.state === 'suspended') {
@@ -23,56 +23,37 @@ export class AudioController {
 
     const t = this.ctx.currentTime;
     
-    // Create a dark ambient drone
     const osc1 = this.ctx.createOscillator();
     const osc2 = this.ctx.createOscillator();
     const sub = this.ctx.createOscillator();
-    
     const filter = this.ctx.createBiquadFilter();
-    const lfo = this.ctx.createOscillator(); // Low Frequency Oscillator to modulate filter
-    const lfoGain = this.ctx.createGain();
     const gain = this.ctx.createGain();
 
-    // Pitch increases slightly with level to build tension
     const baseFreq = 45 + (level * 2); 
 
     osc1.type = 'sawtooth';
     osc1.frequency.value = baseFreq;
-    
     osc2.type = 'triangle';
-    osc2.frequency.value = baseFreq * 1.01; // Slight detune for thickness
-    
+    osc2.frequency.value = baseFreq * 1.01;
     sub.type = 'square';
-    sub.frequency.value = baseFreq / 2; // Sub bass octave down
+    sub.frequency.value = baseFreq / 2;
 
-    // Filter setup
     filter.type = 'lowpass';
     filter.frequency.value = 300;
-    filter.Q.value = 1;
-
-    // LFO to create "breathing" texture
-    lfo.type = 'sine';
-    lfo.frequency.value = 0.2; // Slow pulse
-    lfoGain.gain.value = 200; // Filter cutoff range
-    lfo.connect(lfoGain);
-    lfoGain.connect(filter.frequency);
-
+    
     gain.gain.value = 0.6;
 
-    // Connections
     osc1.connect(filter);
     osc2.connect(filter);
     sub.connect(filter);
     filter.connect(gain);
     gain.connect(this.masterGain);
 
-    // Start
     osc1.start(t);
     osc2.start(t);
     sub.start(t);
-    lfo.start(t);
 
-    this.bgmNodes = [osc1, osc2, sub, filter, gain, lfo, lfoGain];
+    this.bgmNodes = [osc1, osc2, sub, filter, gain];
   }
 
   stopBgm() {
@@ -83,7 +64,7 @@ export class AudioController {
     this.bgmNodes = [];
   }
 
-  playSfx(type: 'attack' | 'hit' | 'damage' | 'victory' | 'gameover') {
+  playSfx(type: 'attack' | 'hit' | 'damage' | 'victory' | 'gameover' | 'loot' | 'skill' | 'buy') {
     if (!this.ctx || !this.masterGain) return;
     const t = this.ctx.currentTime;
 
@@ -93,7 +74,7 @@ export class AudioController {
     gain.connect(this.masterGain);
 
     switch (type) {
-      case 'attack': // Quick "Swoosh"
+      case 'attack': 
         osc.type = 'triangle';
         osc.frequency.setValueAtTime(600, t);
         osc.frequency.exponentialRampToValueAtTime(100, t + 0.15);
@@ -102,7 +83,16 @@ export class AudioController {
         osc.start(t);
         osc.stop(t + 0.15);
         break;
-      case 'hit': // Crunch impact
+      case 'skill': // High pitch swoosh
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(800, t);
+        osc.frequency.exponentialRampToValueAtTime(1200, t + 0.2);
+        gain.gain.setValueAtTime(0.3, t);
+        gain.gain.linearRampToValueAtTime(0, t + 0.2);
+        osc.start(t);
+        osc.stop(t + 0.2);
+        break;
+      case 'hit': 
         osc.type = 'square';
         osc.frequency.setValueAtTime(150, t);
         osc.frequency.exponentialRampToValueAtTime(40, t + 0.1);
@@ -111,7 +101,13 @@ export class AudioController {
         osc.start(t);
         osc.stop(t + 0.1);
         break;
-      case 'damage': // Low warning thud
+      case 'loot': // Coin sound
+        this.playMelody([1200, 1600], 0.05);
+        break;
+      case 'buy': // Register sound
+        this.playMelody([800, 1000], 0.1);
+        break;
+      case 'damage': 
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(100, t);
         osc.frequency.linearRampToValueAtTime(50, t + 0.2);
@@ -120,10 +116,10 @@ export class AudioController {
         osc.start(t);
         osc.stop(t + 0.2);
         break;
-      case 'victory': // Major Chord Arpeggio
+      case 'victory': 
         this.playMelody([523.25, 659.25, 783.99, 1046.50], 0.12);
         break;
-      case 'gameover': // Sad slide down
+      case 'gameover':
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(300, t);
         osc.frequency.exponentialRampToValueAtTime(30, t + 1.5);

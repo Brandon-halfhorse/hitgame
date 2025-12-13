@@ -1,40 +1,47 @@
 import React from 'react';
-import { Entity, EntityType, FloatingText } from '../types';
+import { Entity, EntityType, FloatingText, Item, WeaponType } from '../types';
+import { WEAPON_STATS, ITEM_SIZE } from '../constants';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Sword, Hammer, Scissors } from 'lucide-react';
 
 interface GameCanvasProps {
   player: Entity;
   enemies: Entity[];
+  items: Item[];
   particles: FloatingText[];
   width: number;
   height: number;
   shakeIntensity: number;
 }
 
+const WeaponVisual: React.FC<{ type: WeaponType }> = ({ type }) => {
+    switch(type) {
+        case WeaponType.HAMMER: return <Hammer size={24} className="text-yellow-500 drop-shadow-md" />;
+        case WeaponType.DUAL_BLADES: return <Scissors size={24} className="text-green-500 drop-shadow-md rotate-90" />;
+        case WeaponType.SWORD: return <Sword size={24} className="text-blue-500 drop-shadow-md" />;
+        default: return null;
+    }
+}
+
 const EntityRenderer: React.FC<{ entity: Entity }> = ({ entity }) => {
   const isPlayer = entity.type === EntityType.PLAYER;
-  const isBoss = entity.type === EntityType.ENEMY_BOSS;
-  
-  // 3D Token Effect:
-  // We use a container with a transformation to simulate a standing "chip" or "miniature"
-  // The shadow at the bottom helps ground it.
   
   return (
     <div
       className="absolute flex flex-col items-center justify-end transition-transform will-change-transform"
       style={{
         width: entity.size,
-        height: entity.size, // Render height slightly taller for 3D effect
+        height: entity.size,
         left: 0,
         top: 0,
         transform: `translate(${entity.pos.x}px, ${entity.pos.y}px)`,
-        zIndex: Math.floor(entity.pos.y), // Simple depth sorting
+        zIndex: Math.floor(entity.pos.y),
       }}
     >
-        {/* Shadow Blob */}
+        {/* Shadow */}
         <div className="absolute bottom-0 w-[80%] h-[20%] bg-black/40 blur-sm rounded-[100%]" />
 
-        {/* Character Token */}
+        {/* Character */}
         <div 
             className={`
                 relative w-full aspect-square rounded-full border-4 overflow-hidden transition-all duration-75
@@ -42,16 +49,13 @@ const EntityRenderer: React.FC<{ entity: Entity }> = ({ entity }) => {
                 ${entity.hitFlashTimer && entity.hitFlashTimer > 0 ? 'brightness-200 sepia' : ''}
             `}
             style={{
-                // "3D Coin" look using box-shadows
                 boxShadow: isPlayer 
                     ? '0px 6px 0px #1e3a8a, 0px 10px 10px rgba(0,0,0,0.5)' 
                     : '0px 6px 0px #7f1d1d, 0px 10px 10px rgba(0,0,0,0.5)',
-                transform: `translateY(${entity.hitFlashTimer ? -5 : 0}px)` // Hop when hit
+                transform: `translateY(${entity.hitFlashTimer ? -5 : 0}px)`
             }}
         >
-             {/* Glossy Reflection */}
             <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent z-10 pointer-events-none" />
-
             <img 
                 src={entity.visualUrl} 
                 alt="Entity" 
@@ -59,7 +63,17 @@ const EntityRenderer: React.FC<{ entity: Entity }> = ({ entity }) => {
             />
         </div>
 
-        {/* Health Bar (Floating above head) */}
+        {/* Weapon Overlay (Held in hand) */}
+        {entity.weapon !== WeaponType.FISTS && (
+            <div 
+                className={`absolute bottom-2 ${entity.facing === 'right' ? '-right-4' : '-left-4'} z-20`}
+                style={{ transform: entity.facing === 'left' ? 'scaleX(-1)' : 'none' }}
+            >
+                <WeaponVisual type={entity.weapon} />
+            </div>
+        )}
+
+        {/* Health Bar */}
         <div className="absolute -top-4 w-[120%] h-2 bg-gray-900 rounded-full border border-gray-600 overflow-hidden z-20">
             <div 
                 className={`h-full ${isPlayer ? 'bg-gradient-to-r from-blue-500 to-cyan-400' : 'bg-gradient-to-r from-red-600 to-orange-500'}`} 
@@ -67,7 +81,7 @@ const EntityRenderer: React.FC<{ entity: Entity }> = ({ entity }) => {
             />
         </div>
 
-        {/* Attack Effect: A slash overlay */}
+        {/* Attack Effect */}
         <AnimatePresence>
             {entity.isAttacking && (
                 <motion.div
@@ -75,8 +89,11 @@ const EntityRenderer: React.FC<{ entity: Entity }> = ({ entity }) => {
                     animate={{ opacity: 1, scale: 1.5, rotate: entity.facing === 'right' ? 45 : -45 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.15 }}
-                    className={`absolute bottom-1/2 ${entity.facing === 'right' ? '-right-10' : '-left-10'} w-24 h-8 bg-white/80 blur-md rounded-full z-30`}
-                    style={{ transformOrigin: 'center' }}
+                    className={`absolute bottom-1/2 ${entity.facing === 'right' ? '-right-10' : '-left-10'} w-24 h-8 blur-md rounded-full z-30`}
+                    style={{ 
+                        transformOrigin: 'center',
+                        backgroundColor: WEAPON_STATS[entity.weapon].color
+                    }}
                 />
             )}
         </AnimatePresence>
@@ -84,7 +101,7 @@ const EntityRenderer: React.FC<{ entity: Entity }> = ({ entity }) => {
   );
 };
 
-export const GameCanvas: React.FC<GameCanvasProps> = ({ player, enemies, particles, width, height, shakeIntensity }) => {
+export const GameCanvas: React.FC<GameCanvasProps> = ({ player, enemies, items, particles, width, height, shakeIntensity }) => {
   return (
     <div 
         className="relative overflow-hidden shadow-2xl rounded-xl border-8 border-slate-800 bg-[#1a1a1a]"
@@ -94,24 +111,40 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ player, enemies, particl
             transform: `translate(${Math.random() * shakeIntensity - shakeIntensity/2}px, ${Math.random() * shakeIntensity - shakeIntensity/2}px)`
         }}
     >
-        {/* Isometric Grid Floor */}
+        {/* Floor Grid */}
         <div 
             className="absolute inset-0 opacity-20 pointer-events-none"
             style={{
-                backgroundImage: `
-                    linear-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px),
-                    linear-gradient(90deg, rgba(255, 255, 255, 0.1) 1px, transparent 1px)
-                `,
+                backgroundImage: `linear-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.1) 1px, transparent 1px)`,
                 backgroundSize: '40px 40px',
                 transform: 'perspective(500px) rotateX(20deg) scale(1.5)',
                 transformOrigin: 'top center'
             }}
         />
-
-        {/* Dynamic Vignette */}
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.8)_100%)] pointer-events-none z-0" />
 
-        {/* Render Enemies sorted by Y for pseudo-3D depth */}
+        {/* Items on Ground */}
+        {items.map(item => (
+            <div
+                key={item.id}
+                className="absolute flex items-center justify-center animate-bounce"
+                style={{
+                    width: ITEM_SIZE,
+                    height: ITEM_SIZE,
+                    left: item.pos.x,
+                    top: item.pos.y,
+                    zIndex: Math.floor(item.pos.y),
+                }}
+            >
+                {/* Glow under item */}
+                <div className="absolute inset-0 bg-white/30 blur-md rounded-full" />
+                
+                {item.type === 'WEAPON' && item.subtype && <WeaponVisual type={item.subtype} />}
+                {item.type === 'CURRENCY' && <div className="w-3 h-3 bg-purple-400 rotate-45 border border-purple-200 shadow-[0_0_10px_#a855f7]" />}
+            </div>
+        ))}
+
+        {/* Entities */}
         {[...enemies, player]
             .sort((a, b) => a.pos.y - b.pos.y)
             .map(entity => (
@@ -119,7 +152,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ player, enemies, particl
             ))
         }
 
-        {/* Floating Damage Text */}
+        {/* Particles */}
         {particles.map(p => (
             <div 
                 key={p.id}
@@ -136,7 +169,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ player, enemies, particl
                 {p.text}
             </div>
         ))}
-        
     </div>
   );
 };

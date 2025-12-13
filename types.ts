@@ -12,9 +12,25 @@ export enum EntityType {
   ENEMY_BOSS = 'ENEMY_BOSS'
 }
 
+export enum WeaponType {
+  FISTS = 'FISTS',
+  SWORD = 'SWORD', // Balanced
+  HAMMER = 'HAMMER', // Slow, High Dmg, Knockback
+  DUAL_BLADES = 'DUAL_BLADES' // Fast, Low Dmg
+}
+
 export interface Position {
   x: number;
   y: number;
+}
+
+export interface Item {
+  id: number;
+  type: 'WEAPON' | 'HEALTH_PACK' | 'CURRENCY';
+  subtype?: WeaponType;
+  amount?: number; // For currency or healing amount
+  pos: Position;
+  size: number;
 }
 
 export interface Entity {
@@ -25,12 +41,21 @@ export interface Entity {
   speed: number;
   health: number;
   maxHealth: number;
+  
+  // Combat stats
+  weapon: WeaponType;
   damage: number;
+  attackCooldown: number;
+  maxAttackCooldown: number;
+  
+  // States
   isAttacking?: boolean;
-  attackCooldown?: number;
-  hitFlashTimer?: number; // For visual feedback when hit
+  hitFlashTimer?: number;
   facing: 'left' | 'right';
-  visualUrl: string; 
+  visualUrl: string;
+  
+  // Skills
+  dashCooldown?: number;
 }
 
 export interface FloatingText {
@@ -46,13 +71,15 @@ export interface FloatingText {
 export interface GameState {
   player: Entity;
   enemies: Entity[];
+  items: Item[];
   particles: FloatingText[];
   level: number;
   score: number;
+  currency: number; // New: Data Shards
   status: GameStatus;
   gameBounds: { width: number; height: number };
   loreText: string;
-  shakeIntensity: number; // Screen shake effect
+  shakeIntensity: number;
 }
 
 export interface InputState {
@@ -61,4 +88,6 @@ export interface InputState {
   left: boolean;
   right: boolean;
   attack: boolean;
+  skill1: boolean; // Ambush
+  buy: boolean; // Buy health
 }

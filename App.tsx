@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { GameCanvas } from './components/GameCanvas';
-import { GameState, GameStatus, Entity, EntityType, FloatingText } from './types';
-import { CANVAS_WIDTH, CANVAS_HEIGHT, PLAYER_SIZE, PLAYER_SPEED, ATTACK_RANGE, LEVEL_CONFIG, PLAYER_IMG, ENEMY_IMG_BASE, ATTACK_COOLDOWN, ENEMY_SIZE, BOSS_SIZE, BOSS_IMG } from './constants';
+import { GameState, GameStatus, Entity, EntityType, FloatingText, WeaponType, Item } from './types';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, PLAYER_SIZE, PLAYER_SPEED, LEVEL_CONFIG, PLAYER_IMG, ENEMY_IMG_BASE, ENEMY_SIZE, BOSS_SIZE, BOSS_IMG, WEAPON_STATS, ITEM_SIZE, SKILL_COOLDOWN_AMBUSH, HEAL_COST, HEAL_AMOUNT } from './constants';
 import { generateLevelLore, generateVictoryMessage } from './services/geminiService';
 import { audioManager } from './services/audioService';
-import { Play, RotateCcw, Shield, Heart, Skull, Zap, Volume2 } from 'lucide-react';
+import { Play, RotateCcw, Shield, Heart, Skull, Zap, Volume2, ShoppingBag } from 'lucide-react';
 
 export default function App() {
   // --- State ---
@@ -17,14 +17,20 @@ export default function App() {
       speed: PLAYER_SPEED,
       health: 100,
       maxHealth: 100,
-      damage: 25,
+      damage: 15,
+      weapon: WeaponType.FISTS,
+      attackCooldown: 0,
+      maxAttackCooldown: 20,
       facing: 'right',
-      visualUrl: PLAYER_IMG
+      visualUrl: PLAYER_IMG,
+      dashCooldown: 0
     },
     enemies: [],
+    items: [],
     particles: [],
     level: 1,
     score: 0,
+    currency: 0,
     status: GameStatus.IDLE,
     gameBounds: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
     loreText: "准备好加入紫岚战队了吗？按开始键进入。",
@@ -33,10 +39,11 @@ export default function App() {
 
   // Refs for loop performance
   const stateRef = useRef<GameState>(gameState);
-  const inputRef = useRef({ up: false, down: false, left: false, right: false, attack: false });
+  const inputRef = useRef({ up: false, down: false, left: false, right: false, attack: false, skill1: false, buy: false });
   const loopRef = useRef<number>(0);
   const frameCountRef = useRef<number>(0);
   const particleIdCounter = useRef<number>(0);
+  const itemIdCounter = useRef<number>(0);
 
   // Sync ref with state
   useEffect(() => {
@@ -52,6 +59,8 @@ export default function App() {
         case 'a': case 'arrowleft': inputRef.current.left = true; break;
         case 'd': case 'arrowright': inputRef.current.right = true; break;
         case ' ': case 'j': inputRef.current.attack = true; break;
+        case '1': inputRef.current.skill1 = true; break;
+        case 'b': inputRef.current.buy = true; break;
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -61,6 +70,8 @@ export default function App() {
         case 'a': case 'arrowleft': inputRef.current.left = false; break;
         case 'd': case 'arrowright': inputRef.current.right = false; break;
         case ' ': case 'j': inputRef.current.attack = false; break;
+        case '1': inputRef.current.skill1 = false; break;
+        case 'b': inputRef.current.buy = false; break;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -80,9 +91,23 @@ export default function App() {
         y,
         text,
         color,
-        life: 30, // 0.5 seconds at 60fps
+        life: 45,
         velocity: { x: (Math.random() - 0.5) * 2, y: -2 }
     });
+  };
+
+  const spawnItem = (x: number, y: number, type: 'WEAPON' | 'CURRENCY', subtype?: WeaponType, currentItems?: Item[]) => {
+    itemIdCounter.current++;
+    const item: Item = {
+        id: itemIdCounter.current,
+        type,
+        subtype,
+        amount: type === 'CURRENCY' ? 10 : 0,
+        pos: { x, y },
+        size: ITEM_SIZE
+    };
+    if (currentItems) currentItems.push(item);
+    return item;
   };
 
   // --- Game Loop Logic ---
@@ -93,126 +118,214 @@ export default function App() {
     const input = inputRef.current;
     let newPlayer = { ...currentState.player };
     let newEnemies = currentState.enemies.map(e => ({...e}));
+    let newItems = [...currentState.items];
     let newParticles = currentState.particles.map(p => ({...p, x: p.x + p.velocity.x, y: p.y + p.velocity.y, life: p.life - 1})).filter(p => p.life > 0);
     let newStatus: GameStatus = currentState.status;
     let newScore = currentState.score;
-    let newShake = Math.max(0, currentState.shakeIntensity - 2); // Decay shake
+    let newCurrency = currentState.currency;
+    let newShake = Math.max(0, currentState.shakeIntensity - 2);
 
-    // Handle Player Hit Flash Decay
+    // --- 0. Shop Logic ---
+    if (input.buy) {
+        if (newCurrency >= HEAL_COST && newPlayer.health < newPlayer.maxHealth) {
+            newCurrency -= HEAL_COST;
+            newPlayer.health = Math.min(newPlayer.health + HEAL_AMOUNT, newPlayer.maxHealth);
+            spawnFloatingText(newPlayer.pos.x, newPlayer.pos.y, "+HP", "#22c55e", newParticles);
+            audioManager.playSfx('buy');
+            inputRef.current.buy = false; // consume input
+        }
+    }
+
+    // --- 1. Player Logic ---
+    // Cooldowns
+    if (newPlayer.attackCooldown > 0) newPlayer.attackCooldown--;
+    else newPlayer.isAttacking = false;
+    
+    if (newPlayer.dashCooldown && newPlayer.dashCooldown > 0) newPlayer.dashCooldown--;
     if (newPlayer.hitFlashTimer && newPlayer.hitFlashTimer > 0) newPlayer.hitFlashTimer--;
-    newEnemies.forEach(e => { if (e.hitFlashTimer && e.hitFlashTimer > 0) e.hitFlashTimer--; });
 
-    // 1. Player Movement
-    let dx = 0; 
-    let dy = 0;
+    // Movement
+    let dx = 0; let dy = 0;
     if (input.up) dy -= newPlayer.speed;
     if (input.down) dy += newPlayer.speed;
     if (input.left) { dx -= newPlayer.speed; newPlayer.facing = 'left'; }
     if (input.right) { dx += newPlayer.speed; newPlayer.facing = 'right'; }
-
-    // Boundary check
+    
     newPlayer.pos = {
         x: Math.min(Math.max(newPlayer.pos.x + dx, 0), CANVAS_WIDTH - newPlayer.size),
         y: Math.min(Math.max(newPlayer.pos.y + dy, 0), CANVAS_HEIGHT - newPlayer.size)
     };
 
-    // 2. Player Attack Logic
-    if (newPlayer.attackCooldown && newPlayer.attackCooldown > 0) {
-        newPlayer.attackCooldown--;
-        if (newPlayer.attackCooldown < 5) newPlayer.isAttacking = false; 
+    // Item Pickup
+    newItems = newItems.filter(item => {
+        const dist = Math.hypot(newPlayer.pos.x - item.pos.x, newPlayer.pos.y - item.pos.y);
+        if (dist < newPlayer.size) {
+            if (item.type === 'WEAPON' && item.subtype) {
+                // Swap Weapon
+                newPlayer.weapon = item.subtype;
+                const stats = WEAPON_STATS[item.subtype];
+                newPlayer.damage = stats.damage;
+                newPlayer.maxAttackCooldown = stats.cooldown;
+                spawnFloatingText(newPlayer.pos.x, newPlayer.pos.y, `GET ${item.subtype}!`, stats.color, newParticles);
+                audioManager.playSfx('loot');
+                return false; // Consume item
+            }
+            if (item.type === 'CURRENCY') {
+                newCurrency += (item.amount || 10);
+                audioManager.playSfx('loot');
+                return false;
+            }
+        }
+        return true;
+    });
+
+    // Attacks & Skills
+    const weaponStats = WEAPON_STATS[newPlayer.weapon];
+    const range = weaponStats.range;
+
+    // SKILL 1: Ambush / Flash Strike
+    if (input.skill1 && (!newPlayer.dashCooldown || newPlayer.dashCooldown <= 0)) {
+        newPlayer.dashCooldown = SKILL_COOLDOWN_AMBUSH;
+        audioManager.playSfx('skill');
+        
+        // Dash Effect
+        const dashDist = 200;
+        const dashDir = newPlayer.facing === 'right' ? 1 : -1;
+        newPlayer.pos.x = Math.min(Math.max(newPlayer.pos.x + (dashDist * dashDir), 0), CANVAS_WIDTH - newPlayer.size);
+        
+        // Check for backstabs
+        newEnemies.forEach(enemy => {
+            const dist = Math.hypot(newPlayer.pos.x - enemy.pos.x, newPlayer.pos.y - enemy.pos.y);
+            if (dist < 100) {
+                // Check if behind
+                const isBehind = (newPlayer.facing === enemy.facing); // Crude check: same facing direction means behind
+                const dmg = isBehind ? newPlayer.damage * 4 : newPlayer.damage; // 4x DMG backstab
+                
+                enemy.health -= dmg;
+                enemy.hitFlashTimer = 20;
+                spawnFloatingText(enemy.pos.x, enemy.pos.y, isBehind ? `BACKSTAB! -${dmg}` : `-${dmg}`, isBehind ? '#ef4444' : '#ffffff', newParticles);
+                
+                if (isBehind) {
+                    newShake = 20;
+                    audioManager.playSfx('hit');
+                }
+            }
+        });
     }
 
-    if (input.attack && (!newPlayer.attackCooldown || newPlayer.attackCooldown === 0)) {
+    // Normal Attack
+    if (input.attack && newPlayer.attackCooldown <= 0) {
         newPlayer.isAttacking = true;
-        newPlayer.attackCooldown = ATTACK_COOLDOWN;
-        audioManager.playSfx('attack'); // Attack Sound
+        newPlayer.attackCooldown = newPlayer.maxAttackCooldown;
+        audioManager.playSfx('attack');
         
-        // Hit detection
         const attackCenter = {
-            x: newPlayer.pos.x + (newPlayer.size / 2) + (newPlayer.facing === 'right' ? 40 : -40),
+            x: newPlayer.pos.x + (newPlayer.size / 2) + (newPlayer.facing === 'right' ? range/2 : -range/2),
             y: newPlayer.pos.y + (newPlayer.size / 2)
         };
 
-        let hitCount = 0;
         newEnemies.forEach(enemy => {
             const enemyCenter = { x: enemy.pos.x + enemy.size/2, y: enemy.pos.y + enemy.size/2 };
             const dist = Math.hypot(attackCenter.x - enemyCenter.x, attackCenter.y - enemyCenter.y);
             
-            if (dist < ATTACK_RANGE) {
-                // Apply Damage
-                const dmg = newPlayer.damage + Math.floor(Math.random() * 10);
+            if (dist < range) {
+                const dmg = newPlayer.damage + Math.floor(Math.random() * 5);
                 enemy.health -= dmg;
                 enemy.hitFlashTimer = 10;
-                hitCount++;
-
-                // Visuals
                 spawnFloatingText(enemy.pos.x + enemy.size/2, enemy.pos.y, `-${dmg}`, '#ef4444', newParticles);
-                audioManager.playSfx('hit'); // Hit Sound
+                audioManager.playSfx('hit');
                 
                 // Knockback
-                const knockbackDir = newPlayer.facing === 'right' ? 1 : -1;
-                enemy.pos.x += knockbackDir * 30; 
+                const kDir = newPlayer.facing === 'right' ? 1 : -1;
+                enemy.pos.x += kDir * (newPlayer.weapon === WeaponType.HAMMER ? 60 : 20);
+                newShake += 2;
             }
         });
-
-        if (hitCount > 0) {
-            newShake = 10 + (hitCount * 2); // Screen shake on hit
-        }
     }
 
-    // 3. Enemy AI & Cleanup
+    // --- 2. Enemy Logic ---
     const aliveEnemies: Entity[] = [];
     newEnemies.forEach(enemy => {
+        if (enemy.hitFlashTimer && enemy.hitFlashTimer > 0) enemy.hitFlashTimer--;
+        
         if (enemy.health > 0) {
             aliveEnemies.push(enemy);
+            
+            // AI: Weapon Seeking
+            let targetX = newPlayer.pos.x;
+            let targetY = newPlayer.pos.y;
+            let seekingWeapon = false;
+
+            // If enemy is unarmed (Fists) and there is a weapon, go for it
+            if (enemy.weapon === WeaponType.FISTS) {
+                const closestWeapon = newItems.find(i => i.type === 'WEAPON');
+                if (closestWeapon) {
+                    targetX = closestWeapon.pos.x;
+                    targetY = closestWeapon.pos.y;
+                    seekingWeapon = true;
+                }
+            }
+
+            // Move
+            const centerX = targetX + (seekingWeapon ? 0 : newPlayer.size/2) - enemy.size/2;
+            const centerY = targetY + (seekingWeapon ? 0 : newPlayer.size/2) - enemy.size/2;
+            const angle = Math.atan2(centerY - enemy.pos.y, centerX - enemy.pos.x);
+            
+            const wiggle = Math.sin(frameCountRef.current * 0.1 + parseInt(enemy.id.split('_')[2] || '0')) * 0.5;
+            enemy.pos.x += (Math.cos(angle) * enemy.speed) + wiggle;
+            enemy.pos.y += (Math.sin(angle) * enemy.speed) + wiggle;
+            enemy.facing = Math.cos(angle) > 0 ? 'right' : 'left';
+
+            // Enemy Collision (Weapon Pickup or Player Damage)
+            if (seekingWeapon) {
+                 const d = Math.hypot(enemy.pos.x - targetX, enemy.pos.y - targetY);
+                 if (d < 30) {
+                     // Enemy picks up weapon!
+                     const wItemIndex = newItems.findIndex(i => i.type === 'WEAPON');
+                     if (wItemIndex !== -1) {
+                         const w = newItems[wItemIndex];
+                         if (w.subtype) {
+                             enemy.weapon = w.subtype;
+                             const stats = WEAPON_STATS[w.subtype];
+                             enemy.damage = stats.damage * 0.5; // Enemies do less dmg with same weapon
+                             enemy.maxAttackCooldown = stats.cooldown + 20; // Slower than player
+                             spawnFloatingText(enemy.pos.x, enemy.pos.y, "EQUIPPED!", "#fbbf24", newParticles);
+                             newItems.splice(wItemIndex, 1);
+                         }
+                     }
+                 }
+            } else {
+                // Attack Player
+                const distToPlayer = Math.hypot((newPlayer.pos.x + newPlayer.size/2) - (enemy.pos.x + enemy.size/2), (newPlayer.pos.y + newPlayer.size/2) - (enemy.pos.y + enemy.size/2));
+                if (distToPlayer < (newPlayer.size/2 + enemy.size/3)) {
+                     if (frameCountRef.current % (enemy.maxAttackCooldown || 40) === 0) {
+                        const enemyDmg = enemy.damage;
+                        newPlayer.health -= enemyDmg;
+                        newPlayer.hitFlashTimer = 10;
+                        newShake = 15;
+                        spawnFloatingText(newPlayer.pos.x + newPlayer.size/2, newPlayer.pos.y, `-${enemyDmg}`, '#ffffff', newParticles);
+                        audioManager.playSfx('damage');
+                     }
+                }
+            }
+
         } else {
-            // Enemy Died
+            // Died
             newScore += 100;
+            // Drop Loot
+            spawnItem(enemy.pos.x, enemy.pos.y, 'CURRENCY', undefined, newItems);
             spawnFloatingText(enemy.pos.x, enemy.pos.y, "击杀!", '#fbbf24', newParticles);
         }
     });
     newEnemies = aliveEnemies;
 
-    newEnemies.forEach(enemy => {
-        // Simple AI: Move directly towards player
-        const centerX = newPlayer.pos.x + newPlayer.size/2 - enemy.size/2;
-        const centerY = newPlayer.pos.y + newPlayer.size/2 - enemy.size/2;
-        
-        const angle = Math.atan2(centerY - enemy.pos.y, centerX - enemy.pos.x);
-        
-        // Wiggle movement for "swarming" feel
-        const wiggle = Math.sin(frameCountRef.current * 0.1 + parseInt(enemy.id.split('_')[2] || '0')) * 0.5;
-        
-        enemy.pos.x += (Math.cos(angle) * enemy.speed) + wiggle;
-        enemy.pos.y += (Math.sin(angle) * enemy.speed) + wiggle;
-        enemy.facing = Math.cos(angle) > 0 ? 'right' : 'left';
-
-        // Collision with Player (Damage)
-        const distToPlayer = Math.hypot(
-            (newPlayer.pos.x + newPlayer.size/2) - (enemy.pos.x + enemy.size/2),
-            (newPlayer.pos.y + newPlayer.size/2) - (enemy.pos.y + enemy.size/2)
-        );
-
-        if (distToPlayer < (newPlayer.size/2 + enemy.size/3)) {
-            if (frameCountRef.current % 30 === 0) { // Damage tick
-                const enemyDmg = 5 + currentState.level * 2; // Damage scales with level
-                newPlayer.health -= enemyDmg;
-                newPlayer.hitFlashTimer = 10;
-                newShake = 15; // Hard shake when player hit
-                spawnFloatingText(newPlayer.pos.x + newPlayer.size/2, newPlayer.pos.y, `-${enemyDmg}`, '#ffffff', newParticles);
-                audioManager.playSfx('damage'); // Player Hurt Sound
-            }
-        }
-    });
-
-    // 4. Game Over / Level Clear Check
+    // --- 3. Status Checks ---
     if (newPlayer.health <= 0) {
         newPlayer.health = 0;
         newStatus = GameStatus.GAME_OVER;
         audioManager.stopBgm();
         audioManager.playSfx('gameover');
     } else if (newEnemies.length === 0) {
-        // Level cleared
         if (currentState.level >= 5) {
             newStatus = GameStatus.VICTORY;
             audioManager.stopBgm();
@@ -222,15 +335,16 @@ export default function App() {
         }
     }
 
-    // Update refs and state
     frameCountRef.current++;
     setGameState(prev => ({
         ...prev,
         player: newPlayer,
         enemies: newEnemies,
+        items: newItems,
         particles: newParticles,
         status: newStatus,
         score: newScore,
+        currency: newCurrency,
         shakeIntensity: newShake
     }));
   };
@@ -248,35 +362,22 @@ export default function App() {
   }, [gameState.status]);
 
 
-  // --- Game Flow Control ---
-
+  // --- Logic ---
   const startGame = async () => {
-    // Init Audio Context on user gesture
     audioManager.init();
     audioManager.playBgm(1);
-
-    // Reset player
-    const freshPlayer = {
-        ...stateRef.current.player,
-        health: 100,
-        pos: { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 }
-    };
-    
-    // Load Level 1
+    const freshPlayer = { ...stateRef.current.player, health: 100, weapon: WeaponType.FISTS, damage: 15, pos: { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 } };
     const lore = await generateLevelLore(1, false);
-    startLevel(1, freshPlayer, 0, lore);
+    startLevel(1, freshPlayer, 0, 0, lore);
   };
 
-  const startLevel = (levelNum: number, playerState: Entity, score: number, lore: string) => {
-    // Update BGM Intensity
+  const startLevel = (levelNum: number, playerState: Entity, score: number, currency: number, lore: string) => {
     audioManager.playBgm(levelNum);
-
     const config = LEVEL_CONFIG[levelNum as keyof typeof LEVEL_CONFIG];
     
     // Spawn Enemies
     const spawnedEnemies: Entity[] = [];
     for(let i=0; i<config.enemyCount; i++) {
-        // Random edge spawn
         const isSide = Math.random() > 0.5;
         const x = isSide ? (Math.random() > 0.5 ? 0 : CANVAS_WIDTH - ENEMY_SIZE) : Math.random() * CANVAS_WIDTH;
         const y = isSide ? Math.random() * CANVAS_HEIGHT : (Math.random() > 0.5 ? 0 : CANVAS_HEIGHT - ENEMY_SIZE);
@@ -290,8 +391,10 @@ export default function App() {
             health: config.enemyHealth,
             maxHealth: config.enemyHealth,
             damage: 10,
+            weapon: WeaponType.FISTS,
+            maxAttackCooldown: 60,
+            attackCooldown: 0,
             facing: x < CANVAS_WIDTH/2 ? 'right' : 'left',
-            // Fix: Use '&' because base url already has '?'
             visualUrl: `${ENEMY_IMG_BASE}&random=${i}${levelNum}`
         });
     }
@@ -306,17 +409,39 @@ export default function App() {
             health: config.enemyHealth * 5, 
             maxHealth: config.enemyHealth * 5,
             damage: 25,
+            weapon: WeaponType.HAMMER, // Boss starts with Hammer
+            maxAttackCooldown: 60,
+            attackCooldown: 0,
             facing: 'left',
             visualUrl: BOSS_IMG
+        });
+    }
+
+    // Spawn Center Weapon (The Scramble!)
+    const items: Item[] = [];
+    const weaponPool = [WeaponType.SWORD, WeaponType.HAMMER, WeaponType.DUAL_BLADES];
+    const randomWeapon = weaponPool[Math.floor(Math.random() * weaponPool.length)];
+    
+    // Always spawn a weapon in center for levels > 1
+    if (levelNum >= 1) {
+        itemIdCounter.current++;
+        items.push({
+            id: itemIdCounter.current,
+            type: 'WEAPON',
+            subtype: randomWeapon,
+            pos: { x: CANVAS_WIDTH / 2 - 20, y: CANVAS_HEIGHT / 2 + 100 }, // Slightly offset so player doesn't grab it instantly on spawn
+            size: ITEM_SIZE
         });
     }
 
     setGameState({
         player: playerState,
         enemies: spawnedEnemies,
+        items: items,
         particles: [],
         level: levelNum,
         score: score,
+        currency: currency,
         status: GameStatus.PLAYING,
         gameBounds: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
         loreText: lore,
@@ -327,11 +452,10 @@ export default function App() {
   const nextLevel = async () => {
     const nextLvl = gameState.level + 1;
     setGameState(prev => ({ ...prev, status: GameStatus.IDLE })); 
-    
     let lore = "";
     if (nextLvl <= 5) {
         lore = await generateLevelLore(nextLvl, LEVEL_CONFIG[nextLvl as keyof typeof LEVEL_CONFIG].boss);
-        startLevel(nextLvl, gameState.player, gameState.score, lore);
+        startLevel(nextLvl, gameState.player, gameState.score, gameState.currency, lore);
     }
   };
   
@@ -340,146 +464,124 @@ export default function App() {
       setGameState(prev => ({...prev, loreText: victoryMsg}));
   }
 
-  // Effect to trigger next level logic
   useEffect(() => {
-    if (gameState.status === GameStatus.LEVEL_TRANSITION) {
-        nextLevel();
-    }
-    if (gameState.status === GameStatus.VICTORY) {
-        finishGame();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (gameState.status === GameStatus.LEVEL_TRANSITION) nextLevel();
+    if (gameState.status === GameStatus.VICTORY) finishGame();
   }, [gameState.status]);
 
   // --- Render ---
-
   return (
     <div className="w-full min-h-screen flex flex-col items-center justify-center text-white bg-slate-900 scanlines relative font-sans">
       
-      {/* Header / HUD */}
-      <div className="w-[800px] flex justify-between items-center mb-4 p-4 bg-slate-800 rounded-lg border-2 border-slate-600 shadow-lg z-20">
-        <div className="flex items-center gap-4">
-            <div className="flex flex-col">
-                <span className="text-xs text-slate-400 uppercase tracking-widest">操作员</span>
-                <span className="text-xl font-bold text-blue-400">HERO-01</span>
-            </div>
-            <div className="h-10 w-[1px] bg-slate-600 mx-2"></div>
-            <div className="flex flex-col">
+      {/* HUD */}
+      <div className="w-[800px] flex justify-between items-start mb-2 p-4 bg-slate-800/90 rounded-lg border-2 border-slate-600 shadow-lg z-20">
+        <div className="flex gap-6">
+            <div className="flex flex-col gap-1">
                  <div className="flex items-center gap-2 text-red-400">
                     <Heart size={20} fill="currentColor" />
-                    <span className="font-mono text-2xl font-bold">{Math.max(0, Math.round(gameState.player.health))}</span>
+                    <span className="font-mono text-2xl font-bold">{Math.round(gameState.player.health)}</span>
                  </div>
-                 <div className="w-48 h-3 bg-slate-900 rounded-full mt-1 border border-slate-700 relative overflow-hidden">
-                    <div 
-                        className="h-full bg-gradient-to-r from-red-600 to-red-400 transition-all duration-200"
-                        style={{ width: `${Math.max(0, gameState.player.health)}%` }}
-                    ></div>
+                 <div className="w-40 h-2 bg-slate-900 rounded-full border border-slate-700 overflow-hidden">
+                    <div className="h-full bg-red-500" style={{ width: `${(gameState.player.health/gameState.player.maxHealth)*100}%` }}></div>
                  </div>
+            </div>
+            
+            {/* Skills HUD */}
+            <div className="flex gap-2">
+                <div className="relative group">
+                    <div className={`w-12 h-12 rounded border-2 flex items-center justify-center transition-colors ${gameState.player.dashCooldown && gameState.player.dashCooldown > 0 ? 'border-gray-600 bg-gray-800 text-gray-500' : 'border-purple-400 bg-purple-900/50 text-purple-300 shadow-[0_0_10px_#a855f7]'}`}>
+                        <span className="font-bold text-xl">1</span>
+                    </div>
+                    <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-gray-400 whitespace-nowrap">影袭</span>
+                </div>
+                
+                <div className="relative group">
+                    <div className="w-12 h-12 rounded border-2 border-gray-600 bg-gray-800 flex items-center justify-center opacity-50">
+                        <span className="font-bold text-xl">SPACE</span>
+                    </div>
+                     <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-gray-400 whitespace-nowrap">攻击</span>
+                </div>
             </div>
         </div>
 
-        <div className="flex flex-col items-end">
-            <span className="text-xs text-slate-400">当前任务</span>
-            <div className="flex items-center gap-8">
+        <div className="flex flex-col items-end gap-2">
+            <div className="flex items-center gap-4">
                 <div className="text-right">
-                    <span className="block text-xs text-slate-500">关卡</span>
-                    <span className="font-mono text-2xl font-bold text-yellow-500">0{gameState.level}</span>
+                    <span className="block text-xs text-slate-500">CREDITS</span>
+                    <span className="font-mono text-2xl font-bold text-purple-400 flex items-center justify-end gap-1">
+                        <ShoppingBag size={16} /> {gameState.currency}
+                    </span>
                 </div>
                 <div className="text-right">
-                    <span className="block text-xs text-slate-500">分数</span>
+                    <span className="block text-xs text-slate-500">SCORE</span>
                     <span className="font-mono text-2xl font-bold text-green-500">{gameState.score.toString().padStart(6, '0')}</span>
                 </div>
+            </div>
+            {/* Shop Hint */}
+            <div className="text-xs bg-black/50 px-2 py-1 rounded border border-gray-700 text-gray-400">
+                [B] 购买补给 ({HEAL_COST})
             </div>
         </div>
       </div>
 
-      {/* Main Game Area */}
       <div className="relative z-10">
         <GameCanvas 
             player={gameState.player} 
             enemies={gameState.enemies} 
+            items={gameState.items}
             particles={gameState.particles}
             width={CANVAS_WIDTH} 
             height={CANVAS_HEIGHT} 
             shakeIntensity={gameState.shakeIntensity}
         />
-
-        {/* Overlays */}
+        
+        {/* Status Overlays */}
         {gameState.status === GameStatus.IDLE && (
             <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center p-8 text-center backdrop-blur-sm z-30">
-                <h1 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-blue-400 to-cyan-300 mb-6 tracking-tight drop-shadow-lg">
-                    现实回响：五重试炼
+                <h1 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-blue-400 to-cyan-300 mb-6 drop-shadow-lg">
+                    现实回响：紫岚对决
                 </h1>
-                <p className="text-gray-200 max-w-lg mb-10 text-xl leading-relaxed border-l-4 border-blue-500 pl-4 text-left bg-white/5 p-4 rounded-r">
+                <p className="text-gray-200 mb-8 max-w-lg border-l-4 border-purple-500 pl-4 bg-white/5 p-4 rounded text-left">
                     {gameState.loreText}
                 </p>
-                <div className="flex gap-6 text-base text-gray-300 mb-10">
-                    <div className="flex flex-col items-center bg-gray-800 p-3 rounded-lg border border-gray-700">
-                        <span className="font-bold text-blue-400 mb-1">WASD / 方向键</span>
-                        <span>移动</span>
+                <div className="grid grid-cols-2 gap-4 text-sm text-gray-300 mb-8 w-full max-w-md">
+                    <div className="bg-gray-800 p-2 rounded border border-gray-700 text-center">
+                        <span className="font-bold text-purple-400 block mb-1">技能 [1]</span>
+                        <span>背后突袭造成4倍伤害</span>
                     </div>
-                    <div className="flex flex-col items-center bg-gray-800 p-3 rounded-lg border border-gray-700">
-                        <span className="font-bold text-red-400 mb-1">空格 Space</span>
-                        <span>攻击</span>
+                    <div className="bg-gray-800 p-2 rounded border border-gray-700 text-center">
+                        <span className="font-bold text-yellow-400 block mb-1">夺取武器</span>
+                        <span>不要让敌人拿到地图中央的武器!</span>
                     </div>
                 </div>
                 <button 
                     onClick={startGame}
-                    className="group relative px-10 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold text-lg transition-all transform hover:scale-105 shadow-[0_0_30px_rgba(37,99,235,0.6)] overflow-hidden"
+                    className="px-10 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold text-lg shadow-[0_0_30px_rgba(37,99,235,0.6)] flex items-center gap-2"
                 >
-                    <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-                    <span className="flex items-center gap-3 relative z-10"><Play size={24} fill="currentColor" /> 开始链接</span>
+                    <Play size={24} /> 开始战斗
                 </button>
             </div>
         )}
 
-        {gameState.status === GameStatus.GAME_OVER && (
-            <div className="absolute inset-0 bg-red-950/90 flex flex-col items-center justify-center p-8 text-center backdrop-blur-md z-30">
-                <Skull size={80} className="text-red-500 mb-6 animate-pulse" />
-                <h2 className="text-7xl font-black text-white mb-4 tracking-widest uppercase drop-shadow-[0_4px_0_rgba(0,0,0,0.5)]">任务失败</h2>
-                <p className="text-red-200 text-2xl mb-8">同步率在第 {gameState.level} 层中断</p>
+        {/* Similar Overlays for GameOver/Victory... */}
+        {(gameState.status === GameStatus.GAME_OVER || gameState.status === GameStatus.VICTORY) && (
+            <div className={`absolute inset-0 flex flex-col items-center justify-center p-8 text-center backdrop-blur-md z-30 ${gameState.status === GameStatus.VICTORY ? 'bg-yellow-900/90' : 'bg-red-950/90'}`}>
+                {gameState.status === GameStatus.VICTORY ? <Shield size={80} className="text-yellow-400 mb-4"/> : <Skull size={80} className="text-red-500 mb-4"/>}
+                <h2 className="text-6xl font-black text-white mb-4">{gameState.status === GameStatus.VICTORY ? '任务完成' : '行动失败'}</h2>
                 <button 
-                    onClick={() => setGameState(prev => ({...prev, status: GameStatus.IDLE, loreText: "系统正在重启..."}))}
-                    className="flex items-center gap-2 px-8 py-3 bg-white text-red-900 hover:bg-gray-200 rounded font-bold transition-colors text-xl"
+                    onClick={() => setGameState(prev => ({...prev, status: GameStatus.IDLE, loreText: "重新初始化..."}))}
+                    className="flex items-center gap-2 px-8 py-3 bg-white text-black rounded font-bold hover:bg-gray-200"
                 >
-                    <RotateCcw size={24} /> 重启系统
+                    <RotateCcw size={20} /> 返回大厅
                 </button>
-            </div>
-        )}
-
-        {gameState.status === GameStatus.VICTORY && (
-            <div className="absolute inset-0 bg-yellow-900/90 flex flex-col items-center justify-center p-8 text-center backdrop-blur-md z-30">
-                <div className="relative mb-6">
-                    <Shield size={80} className="text-yellow-400 relative z-10" />
-                    <Zap size={40} className="text-white absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20" fill="currentColor"/>
-                </div>
-                <h2 className="text-6xl font-black text-white mb-4 tracking-widest drop-shadow-lg">任务完成</h2>
-                <p className="text-yellow-100 text-xl max-w-lg mb-8 italic">"{gameState.loreText}"</p>
-                <div className="text-5xl font-mono text-yellow-300 mb-10 drop-shadow-md">最终得分: {gameState.score}</div>
-                <button 
-                    onClick={() => setGameState(prev => ({...prev, status: GameStatus.IDLE, loreText: "欢迎回来，英雄。"}))}
-                    className="flex items-center gap-2 px-8 py-3 bg-yellow-500 hover:bg-yellow-400 text-black rounded font-bold transition-colors text-xl"
-                >
-                    <RotateCcw size={24} /> 再次挑战
-                </button>
-            </div>
-        )}
-        
-        {/* Loading / Transition */}
-        {gameState.status === GameStatus.LEVEL_TRANSITION && (
-            <div className="absolute inset-0 bg-black/95 flex flex-col items-center justify-center text-center z-30">
-                <div className="w-20 h-20 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-6"></div>
-                <h3 className="text-3xl font-mono text-blue-400 animate-pulse">正在生成第 {gameState.level + 1} 层数据...</h3>
             </div>
         )}
       </div>
-
-      {/* Controls Hint Footer */}
-      <div className="mt-6 flex justify-between w-[800px] text-slate-500 text-xs font-mono tracking-widest">
-        <span>SYSTEM VER: 5.0.2 // LATENCY: 0ms</span>
-        <span className="flex items-center gap-2"><Volume2 size={12} /> AUDIO SYNTHESIZER: ONLINE</span>
+      
+       <div className="mt-4 flex justify-between w-[800px] text-slate-500 text-xs font-mono">
+        <span>TACTICAL OS v2.1</span>
+        <span className="flex items-center gap-2"><Volume2 size={12} /> AUDIO: ACTIVE</span>
       </div>
-
     </div>
   );
 }
