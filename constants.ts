@@ -1,40 +1,40 @@
 export const CANVAS_WIDTH = 800;
 export const CANVAS_HEIGHT = 600;
 
-export const PLAYER_SIZE = 72;
-export const ENEMY_SIZE = 64;
-export const BOSS_SIZE = 140;
+export const PLAYER_SIZE = 80;
+export const ENEMY_SIZE = 70;
+export const BOSS_SIZE = 150;
 export const ITEM_SIZE = 40;
 
-// INCREASED SPEED for fast-paced street battle
-export const PLAYER_SPEED = 9; 
-export const DASH_SPEED = 28;
+// SPEED: Fast paced
+export const PLAYER_SPEED = 10; 
+export const DASH_SPEED = 30;
 
-// Weapon Configs (High damage for lethal street combat)
+// Weapon Configs (Wheat & Green Theme)
 export const WEAPON_STATS = {
-    FISTS: { damage: 25, cooldown: 18, range: 70, color: '#94a3b8' },
-    SWORD: { damage: 55, cooldown: 22, range: 110, color: '#3b82f6' }, 
-    HAMMER: { damage: 90, cooldown: 50, range: 120, color: '#f59e0b' }, 
-    DUAL_BLADES: { damage: 30, cooldown: 10, range: 90, color: '#10b981' }, 
+    FISTS: { damage: 25, cooldown: 18, range: 70, color: '#f5deb3' }, // Wheat
+    SWORD: { damage: 55, cooldown: 22, range: 110, color: '#22c55e' }, // Green
+    HAMMER: { damage: 90, cooldown: 50, range: 120, color: '#d97706' }, 
+    DUAL_BLADES: { damage: 30, cooldown: 10, range: 90, color: '#84cc16' }, 
 };
 
-export const SKILL_COOLDOWN_AMBUSH = 150; // Faster cooldown for skill
+export const SKILL_COOLDOWN_AMBUSH = 140; 
 export const HEAL_COST = 50; 
 export const HEAL_AMOUNT = 40;
 
-// ASSETS: Street Runner / Cyberpunk Thugs
-// Player: Streetwear Runner
-export const PLAYER_IMG = "https://img.freepik.com/premium-photo/cool-anime-boy-streetwear-cyberpunk-style-3d-render-white-background_890746-19343.jpg?w=740"; 
+// ASSETS: Pollinations AI with specific prompts
+// Player: Two eyes, Special Forces, Flare Gun, Wheat/Green theme
+export const PLAYER_IMG = "https://image.pollinations.ai/prompt/cute%203d%20anime%20girl%20special%20forces%20soldier%20uniform%20no%20eyepatch%20two%20eyes%20open%20holding%20flare%20gun%20full%20body%20white%20background%20wheat%20and%20green%20color%20palette?width=400&height=400&nologo=true"; 
 
-// Enemies: Cyber Punks / Robots
-export const ENEMY_IMG_BASE = "https://img.freepik.com/premium-photo/evil-cyborg-robot-soldier-3d-render-white-background_890746-17482.jpg?w=360";
-export const BOSS_IMG = "https://img.freepik.com/premium-photo/massive-armored-mech-robot-boss-3d-render-isolated_890746-9281.jpg?w=740";
+// Enemy: Yellow hair, Tattered clothes, Blue flare gun
+export const ENEMY_IMG_BASE = "https://image.pollinations.ai/prompt/3d%20anime%20thug%20yellow%20hair%20tattered%20clothes%20holding%20blue%20flare%20gun%20throwing%20bomb%20white%20background?width=400&height=400&nologo=true";
 
-// DIFFICULTY: Much harder, faster enemies
+export const BOSS_IMG = "https://image.pollinations.ai/prompt/giant%20armored%20mech%20robot%20boss%20green%20and%20wheat%20military%20camo%20white%20background?width=600&height=600&nologo=true";
+
 export const LEVEL_CONFIG = {
-  1: { enemyCount: 3, enemyHealth: 40, enemySpeed: 2.5, boss: false }, // Fast start
-  2: { enemyCount: 4, enemyHealth: 60, enemySpeed: 3.2, boss: false },
-  3: { enemyCount: 6, enemyHealth: 80, enemySpeed: 4.0, boss: false }, // Very fast
-  4: { enemyCount: 8, enemyHealth: 100, enemySpeed: 4.8, boss: false }, // Swarm
-  5: { enemyCount: 5, enemyHealth: 200, enemySpeed: 5.5, boss: true }, // Lethal
+    1: { enemyCount: 3, enemySpeed: 2, enemyHealth: 50, boss: false },
+    2: { enemyCount: 5, enemySpeed: 2.5, enemyHealth: 70, boss: false },
+    3: { enemyCount: 6, enemySpeed: 3, enemyHealth: 90, boss: false },
+    4: { enemyCount: 8, enemySpeed: 3.5, enemyHealth: 110, boss: false },
+    5: { enemyCount: 1, enemySpeed: 4, enemyHealth: 300, boss: true },
 };

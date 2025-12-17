@@ -33,7 +33,7 @@ export default function App() {
     currency: 0,
     status: GameStatus.IDLE,
     gameBounds: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
-    loreText: "准备好加入紫岚战队了吗？按开始键进入。",
+    loreText: "准备好加入代号“麦芒”的行动了吗？",
     shakeIntensity: 0
   });
 
@@ -410,7 +410,8 @@ export default function App() {
             maxAttackCooldown: 80, // Slower attacks
             attackCooldown: 0,
             facing: x < CANVAS_WIDTH/2 ? 'right' : 'left',
-            visualUrl: `${ENEMY_IMG_BASE}&random=${i}${levelNum}`
+            // Use 'seed' param for Pollinations AI to ensure variety but consistency
+            visualUrl: `${ENEMY_IMG_BASE}&seed=${i}_${levelNum}`
         });
     }
 
