@@ -2,10 +2,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { GameState, GameStatus, Entity, EntityType, FloatingText, WeaponType, Item } from './types';
-import { CANVAS_WIDTH, CANVAS_HEIGHT, PLAYER_SIZE, PLAYER_SPEED, LEVEL_CONFIG, PLAYER_IMG, ENEMY_IMG_BASE, ENEMY_SIZE, BOSS_SIZE, BOSS_IMG, WEAPON_STATS, ITEM_SIZE, HEAL_COST, HEAL_AMOUNT, UPGRADE_COST_BASE, COLOR_NEON_PURPLE } from './constants';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, PLAYER_SIZE, PLAYER_SPEED, LEVEL_CONFIG, PLAYER_IMG, ENEMY_IMG_BASE, ENEMY_SIZE, BOSS_SIZE, BOSS_IMG, WEAPON_STATS, ITEM_SIZE, HEAL_COST, HEAL_AMOUNT, UPGRADE_COST_BASE, COLOR_NEON_PURPLE, COLOR_NEON_CYAN, COLOR_NEON_GREEN } from './constants';
 import { generateLevelLore } from './services/geminiService';
 import { audioManager } from './services/audioService';
-import { Play, RotateCcw, Shield, Heart, Zap, Volume2, ShoppingBag, ArrowUpCircle } from 'lucide-react';
+import { Play, RotateCcw, Shield, Heart, Zap, Volume2, ShoppingBag, ArrowUpCircle, Activity } from 'lucide-react';
 
 export default function App() {
   const [gameState, setGameState] = useState<GameState>({
@@ -86,9 +86,25 @@ export default function App() {
     currentParticles.push({ id: particleIdCounter.current, x, y, text, color, life: 40, velocity: { x: 0, y: -2 } });
   };
 
+  const spawnBloodSplat = (x: number, y: number, currentParticles: FloatingText[]) => {
+      // Spawn 5 purple "blood" particles
+      for (let i = 0; i < 6; i++) {
+        particleIdCounter.current++;
+        currentParticles.push({ 
+            id: particleIdCounter.current, 
+            x: x + (Math.random()-0.5)*40, 
+            y: y + (Math.random()-0.5)*40, 
+            text: "◆", 
+            color: COLOR_NEON_PURPLE, 
+            life: 25, 
+            velocity: { x: (Math.random()-0.5)*10, y: (Math.random()-0.5)*10 } 
+        });
+      }
+  }
+
   const spawnItem = (x: number, y: number, type: 'WEAPON' | 'CURRENCY', subtype?: WeaponType, currentItems?: Item[]) => {
     itemIdCounter.current++;
-    const item: Item = { id: itemIdCounter.current, type, subtype, amount: type === 'CURRENCY' ? 40 : 0, pos: { x, y }, size: ITEM_SIZE };
+    const item: Item = { id: itemIdCounter.current, type, subtype, amount: type === 'CURRENCY' ? 50 : 0, pos: { x, y }, size: ITEM_SIZE };
     if (currentItems) currentItems.push(item);
     return item;
   };
@@ -107,16 +123,16 @@ export default function App() {
     let newCurrency = currentState.currency;
     let newShake = Math.max(0, currentState.shakeIntensity - 3);
 
-    // --- Upgrade Logic ---
+    // --- Actions ---
     const upgradeCost = UPGRADE_COST_BASE * (newPlayer.upgradeLevel || 1);
     if (input.upgrade && newCurrency >= upgradeCost) {
         newCurrency -= upgradeCost;
         newPlayer.upgradeLevel = (newPlayer.upgradeLevel || 1) + 1;
-        newPlayer.maxHealth += 50;
+        newPlayer.maxHealth += 60;
         newPlayer.health = newPlayer.maxHealth;
-        newPlayer.damage += 25;
-        newPlayer.speed += 0.4;
-        spawnFloatingText(newPlayer.pos.x, newPlayer.pos.y, "OVERCLOCK!", COLOR_NEON_PURPLE, newParticles);
+        newPlayer.damage += 30;
+        newPlayer.speed += 0.5;
+        spawnFloatingText(newPlayer.pos.x, newPlayer.pos.y, "OVERCLOCK COMPLETE", COLOR_NEON_PURPLE, newParticles);
         audioManager.playSfx('loot');
         inputRef.current.upgrade = false;
     }
@@ -124,12 +140,12 @@ export default function App() {
     if (input.buy && newCurrency >= HEAL_COST && newPlayer.health < newPlayer.maxHealth) {
         newCurrency -= HEAL_COST;
         newPlayer.health = Math.min(newPlayer.health + HEAL_AMOUNT, newPlayer.maxHealth);
-        spawnFloatingText(newPlayer.pos.x, newPlayer.pos.y, "RESTORE!", "#32d74b", newParticles);
+        spawnFloatingText(newPlayer.pos.x, newPlayer.pos.y, "ENERGY REPAIRED", COLOR_NEON_GREEN, newParticles);
         audioManager.playSfx('buy');
         inputRef.current.buy = false;
     }
 
-    // --- Player Movement ---
+    // --- Movement ---
     let dx = 0; let dy = 0;
     if (input.up) dy -= newPlayer.speed;
     if (input.down) dy += newPlayer.speed;
@@ -155,29 +171,29 @@ export default function App() {
         
         newEnemies.forEach(enemy => {
             const dist = Math.hypot((newPlayer.pos.x + newPlayer.size/2) - (enemy.pos.x + enemy.size/2), (newPlayer.pos.y + newPlayer.size/2) - (enemy.pos.y + enemy.size/2));
-            if (dist < range + 60) {
-                const dmg = newPlayer.damage + Math.floor(Math.random()*25);
+            if (dist < range + 70) {
+                const dmg = newPlayer.damage + Math.floor(Math.random()*40);
                 enemy.health -= dmg;
                 enemy.hitFlashTimer = 12;
-                spawnFloatingText(enemy.pos.x, enemy.pos.y, `HIT! -${dmg}`, "#ff3b30", newParticles);
+                spawnFloatingText(enemy.pos.x, enemy.pos.y, `FATAL: -${dmg}`, "#ff0000", newParticles);
                 audioManager.playSfx('hit');
-                newShake = 25;
+                newShake = 30;
             }
         });
     }
 
-    // Item Interaction
+    // Items
     newItems = newItems.filter(item => {
         const d = Math.hypot((newPlayer.pos.x + newPlayer.size/2) - (item.pos.x + item.size/2), (newPlayer.pos.y + newPlayer.size/2) - (item.pos.y + item.size/2));
-        if (d < 55) {
+        if (d < 65) {
             if (item.type === 'WEAPON' && item.subtype) {
                 newPlayer.weapon = item.subtype;
                 const s = WEAPON_STATS[item.subtype];
-                newPlayer.damage = s.damage + (newPlayer.upgradeLevel || 1) * 20;
+                newPlayer.damage = s.damage + (newPlayer.upgradeLevel || 1) * 25;
                 newPlayer.maxAttackCooldown = s.cooldown;
-                spawnFloatingText(newPlayer.pos.x, newPlayer.pos.y, `ARMED: ${item.subtype}`, s.color, newParticles);
+                spawnFloatingText(newPlayer.pos.x, newPlayer.pos.y, `EQUIPPED: ${s.name}`, s.color, newParticles);
             } else {
-                newCurrency += item.amount || 40;
+                newCurrency += item.amount || 50;
                 spawnFloatingText(newPlayer.pos.x, newPlayer.pos.y, "+CREDITS", "#ffd60a", newParticles);
             }
             audioManager.playSfx('loot');
@@ -186,7 +202,7 @@ export default function App() {
         return true;
     });
 
-    // --- Enemies Logic ---
+    // --- AI ---
     const aliveEnemies: Entity[] = [];
     newEnemies.forEach(enemy => {
         if (enemy.hitFlashTimer && enemy.hitFlashTimer > 0) enemy.hitFlashTimer--;
@@ -203,16 +219,18 @@ export default function App() {
                 enemy.facing = edx > 0 ? 'right' : 'left';
             }
 
-            if (dist < 90 && frameCountRef.current % 40 === 0) {
+            if (dist < 100 && frameCountRef.current % 35 === 0) {
                 newPlayer.health -= enemy.damage;
                 newPlayer.hitFlashTimer = 12;
                 audioManager.playSfx('damage');
-                spawnFloatingText(newPlayer.pos.x, newPlayer.pos.y, `DMG -${enemy.damage}`, "#fff", newParticles);
-                newShake = 18;
+                spawnFloatingText(newPlayer.pos.x, newPlayer.pos.y, `!! SYSTEM ERROR !!`, "#ffffff", newParticles);
+                // Purple Blood Effect
+                spawnBloodSplat(newPlayer.pos.x + newPlayer.size/2, newPlayer.pos.y + newPlayer.size/2, newParticles);
+                newShake = 22;
             }
         } else {
-            newScore += 1000;
-            newCurrency += 60;
+            newScore += 2000;
+            newCurrency += 80;
             spawnItem(enemy.pos.x, enemy.pos.y, 'CURRENCY', undefined, newItems);
         }
     });
@@ -225,7 +243,7 @@ export default function App() {
         setTimeout(() => {
             setIsCelebrating(false);
             setGameState(p => ({ ...p, status: p.level >= 5 ? GameStatus.VICTORY : GameStatus.LEVEL_TRANSITION }));
-        }, 2200);
+        }, 2500);
     }
 
     frameCountRef.current++;
@@ -245,24 +263,20 @@ export default function App() {
     const config = LEVEL_CONFIG[levelNum as keyof typeof LEVEL_CONFIG];
     const enemies: Entity[] = [];
     for(let i=0; i<config.enemyCount; i++) {
-        /** 
-         * CRITICAL: Added unique timestamp-based seed for every single enemy 
-         * to ensure images load properly and bypass broken cache.
-         */
-        const uniqueSeed = `zilan_s7_${levelNum}_${i}_${Date.now()}`;
+        const uniqueSeed = `zilan_s9_${levelNum}_${i}_${Date.now()}`;
         enemies.push({
             id: `e_${levelNum}_${i}`, type: EntityType.ENEMY_MELEE,
-            pos: { x: Math.random() > 0.5 ? -200 : CANVAS_WIDTH + 200, y: Math.random() * CANVAS_HEIGHT },
+            pos: { x: Math.random() > 0.5 ? -250 : CANVAS_WIDTH + 250, y: Math.random() * CANVAS_HEIGHT },
             size: ENEMY_SIZE, speed: config.enemySpeed, health: config.enemyHealth, maxHealth: config.enemyHealth,
-            weapon: WeaponType.FISTS, damage: 20 + levelNum * 3, attackCooldown: 0, maxAttackCooldown: 60, facing: 'right',
+            weapon: WeaponType.FISTS, damage: 25 + levelNum * 5, attackCooldown: 0, maxAttackCooldown: 60, facing: 'right',
             visualUrl: `${ENEMY_IMG_BASE}&seed=${uniqueSeed}`
         });
     }
     if (config.boss) {
         enemies.push({
-            id: 'boss', type: EntityType.ENEMY_BOSS, pos: { x: CANVAS_WIDTH/2 - BOSS_SIZE/2, y: 150 },
-            size: BOSS_SIZE, speed: config.enemySpeed * 0.75, health: config.enemyHealth * 5, maxHealth: config.enemyHealth * 5,
-            weapon: WeaponType.HAMMER, damage: 55, attackCooldown: 0, maxAttackCooldown: 85, facing: 'left', 
+            id: 'boss', type: EntityType.ENEMY_BOSS, pos: { x: CANVAS_WIDTH/2 - BOSS_SIZE/2, y: 180 },
+            size: BOSS_SIZE, speed: config.enemySpeed * 0.8, health: config.enemyHealth * 6, maxHealth: config.enemyHealth * 6,
+            weapon: WeaponType.HAMMER, damage: 65, attackCooldown: 0, maxAttackCooldown: 85, facing: 'left', 
             visualUrl: `${BOSS_IMG}&seed=zilan_boss_${Date.now()}`
         });
     }
@@ -287,42 +301,57 @@ export default function App() {
   }, [gameState.status]);
 
   return (
-    <div className="w-full min-h-screen flex flex-col items-center justify-center text-white bg-[#020204] relative font-sans overflow-hidden">
+    <div className="w-full min-h-screen flex flex-col items-center justify-center text-white bg-[#010102] relative font-sans overflow-hidden">
       
-      {/* HUD Layer */}
-      <div className="w-[800px] flex justify-between items-end mb-2 p-6 bg-black/85 rounded-t-3xl border-x-4 border-t-4 border-purple-950/40 backdrop-blur-3xl z-20 shadow-[0_-20px_50px_rgba(168,85,247,0.25)]">
-        <div className="flex gap-10">
+      {/* HUD: Ultra Modern Cyberpunk */}
+      <div className="w-[800px] flex justify-between items-end mb-2 p-6 bg-black/90 rounded-t-[2.5rem] border-x-4 border-t-4 border-purple-500/30 backdrop-blur-3xl z-20 shadow-[0_-25px_60px_rgba(168,85,247,0.4)]">
+        <div className="flex gap-8">
             <div className="flex flex-col">
-                <div className="flex items-center gap-4 text-purple-200 mb-2">
-                    <Heart size={28} className="fill-purple-600 animate-pulse" />
-                    <span className="font-mono text-4xl font-black italic tracking-tighter">STRUCTURAL: {Math.round(gameState.player.health)}%</span>
+                <div className="flex items-center gap-4 text-cyan-400 mb-2">
+                    <Activity size={32} className="animate-pulse shadow-[0_0_15px_cyan]" />
+                    <span className="font-mono text-4xl font-black italic tracking-tighter">INTEGRITY: {Math.round(gameState.player.health)}</span>
                 </div>
-                <div className="w-72 h-6 bg-black/90 rounded-full border border-purple-500/20 overflow-hidden shadow-inner">
-                    <div className="h-full bg-gradient-to-r from-purple-800 via-purple-500 to-cyan-300 shadow-[0_0_20px_rgba(168,85,247,0.5)] transition-all duration-500" style={{ width: `${(gameState.player.health/gameState.player.maxHealth)*100}%` }}></div>
+                <div className="w-80 h-4 bg-black/95 rounded-full border border-cyan-500/20 overflow-hidden shadow-inner">
+                    <div className="h-full bg-gradient-to-r from-purple-800 via-purple-500 to-cyan-300 shadow-[0_0_20px_rgba(168,85,247,0.8)] transition-all duration-700 ease-out" style={{ width: `${(gameState.player.health/gameState.player.maxHealth)*100}%` }}></div>
                 </div>
             </div>
             
-            <button 
-                onClick={() => inputRef.current.upgrade = true}
-                className={`group flex items-center gap-5 px-8 py-3 rounded-2xl border-2 transition-all active:scale-90 ${gameState.currency >= UPGRADE_COST_BASE * (gameState.player.upgradeLevel || 1) ? 'bg-purple-700 border-purple-300 text-white shadow-[0_0_35px_rgba(168,85,247,0.8)]' : 'bg-gray-950 border-gray-800 text-gray-600'}`}
-            >
-                <ArrowUpCircle size={32} className="group-hover:rotate-180 transition-transform duration-700" />
-                <div className="flex flex-col items-start leading-tight">
-                    <span className="text-[11px] font-black tracking-[0.2em] uppercase opacity-70">Overclock [U]</span>
-                    <span className="text-xl font-black">{UPGRADE_COST_BASE * (gameState.player.upgradeLevel || 1)} CREDITS</span>
-                </div>
-            </button>
+            <div className="flex gap-4">
+                {/* UPGRADE [U] - AURORA PURPLE */}
+                <button 
+                    onClick={() => inputRef.current.upgrade = true}
+                    className={`group relative flex items-center gap-4 px-6 py-3 rounded-2xl border-2 transition-all active:scale-90 overflow-hidden ${gameState.currency >= UPGRADE_COST_BASE * (gameState.player.upgradeLevel || 1) ? 'bg-purple-600 border-purple-200 text-white shadow-[0_0_40px_rgba(223,36,255,0.7)]' : 'bg-gray-950 border-gray-800 text-gray-700'}`}
+                >
+                    <ArrowUpCircle size={30} className="group-hover:rotate-180 transition-transform duration-700" />
+                    <div className="flex flex-col items-start leading-none">
+                        <span className="text-[10px] font-black tracking-widest opacity-80 uppercase">Overclock [U]</span>
+                        <span className="text-xl font-black">{UPGRADE_COST_BASE * (gameState.player.upgradeLevel || 1)}</span>
+                    </div>
+                </button>
+
+                {/* HEAL [B] - ENERGY GREEN */}
+                <button 
+                    onClick={() => inputRef.current.buy = true}
+                    className={`group relative flex items-center gap-4 px-6 py-3 rounded-2xl border-2 transition-all active:scale-90 overflow-hidden ${gameState.currency >= HEAL_COST ? 'bg-green-600 border-green-200 text-white shadow-[0_0_40px_rgba(57,255,20,0.5)]' : 'bg-gray-950 border-gray-800 text-gray-700'}`}
+                >
+                    <Heart size={30} className="group-hover:scale-125 transition-transform" />
+                    <div className="flex flex-col items-start leading-none">
+                        <span className="text-[10px] font-black tracking-widest opacity-80 uppercase">Repair [B]</span>
+                        <span className="text-xl font-black">{HEAL_COST}</span>
+                    </div>
+                </button>
+            </div>
         </div>
 
         <div className="flex flex-col items-end">
-            <div className="flex items-center gap-10 text-white font-mono">
+            <div className="flex items-center gap-12 text-white font-mono">
                 <div className="text-right">
-                    <span className="block text-[11px] font-black text-cyan-400 uppercase tracking-widest mb-1">CASH_FLOW</span>
-                    <span className="text-4xl font-black flex items-center gap-3"><ShoppingBag size={24} className="text-cyan-400"/> {gameState.currency}</span>
+                    <span className="block text-[11px] font-black text-cyan-400 uppercase tracking-[0.2em] mb-1">Credits</span>
+                    <span className="text-4xl font-black flex items-center gap-2"><ShoppingBag size={24} className="text-cyan-400"/> {gameState.currency}</span>
                 </div>
-                <div className="text-right border-l border-purple-500/30 pl-10">
-                    <span className="block text-[11px] font-black text-purple-400 uppercase tracking-widest mb-1">TOTAL_OPS_PTS</span>
-                    <span className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-400">{gameState.score}</span>
+                <div className="text-right border-l-2 border-purple-500/20 pl-10">
+                    <span className="block text-[11px] font-black text-purple-400 uppercase tracking-[0.2em] mb-1">Rating</span>
+                    <span className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-500">{gameState.score}</span>
                 </div>
             </div>
         </div>
@@ -337,39 +366,36 @@ export default function App() {
         {/* State Overlays */}
         {gameState.status === GameStatus.IDLE && (
             <div className="absolute inset-0 bg-black/99 flex flex-col items-center justify-center p-12 text-center z-50 backdrop-blur-3xl">
-                <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
-                <div className="absolute top-10 left-10 text-purple-700/10 text-[12vw] font-black select-none pointer-events-none italic">紫岚</div>
-                <h1 className="text-[100px] font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-purple-300 to-purple-900 mb-10 italic tracking-tighter drop-shadow-[0_0_50px_rgba(168,85,247,0.7)]">
+                <div className="absolute top-10 left-10 text-purple-800/10 text-[15vw] font-black select-none pointer-events-none italic">ZILAN</div>
+                <h1 className="text-[120px] font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-purple-300 to-purple-800 mb-10 italic tracking-tighter drop-shadow-[0_0_60px_rgba(168,85,247,0.8)]">
                     紫岚战队
                 </h1>
-                <p className="text-cyan-100/70 text-3xl mb-16 max-w-3xl italic font-extralight tracking-[0.1em] border-y-2 border-purple-500/20 py-10 leading-relaxed uppercase">
+                <p className="text-cyan-100/60 text-3xl mb-16 max-w-4xl italic font-thin tracking-[0.1em] border-y-2 border-purple-500/30 py-10 uppercase leading-relaxed">
                     "{gameState.loreText}"
                 </p>
-                <button onClick={startGame} className="group relative px-24 py-8 bg-white text-black rounded-full font-black text-4xl transition-all hover:scale-110 hover:shadow-[0_0_100px_rgba(255,255,255,0.5)] flex items-center gap-6 overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
-                    <Play size={50} fill="currentColor" /> 启动作战
-                    <div className="absolute inset-[-6px] border-2 border-white/20 rounded-full scale-110 group-hover:scale-130 transition-transform duration-700"></div>
+                <button onClick={startGame} className="group relative px-28 py-10 bg-white text-black rounded-full font-black text-5xl transition-all hover:scale-110 hover:shadow-[0_0_120px_rgba(255,255,255,0.6)] flex items-center gap-8 overflow-hidden">
+                    <Play size={60} fill="currentColor" /> 执行突围
+                    <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
                 </button>
-                <div className="mt-16 text-xs text-gray-600 font-mono tracking-[0.8em] uppercase">Tactical Engine Alpha-9 // [WASD] [SPACE] [U] [B]</div>
             </div>
         )}
 
         {(gameState.status === GameStatus.GAME_OVER || gameState.status === GameStatus.VICTORY) && (
-            <div className={`absolute inset-0 flex flex-col items-center justify-center p-12 text-center z-50 backdrop-blur-3xl ${gameState.status === GameStatus.VICTORY ? 'bg-purple-950/95 shadow-[inset_0_0_200px_rgba(168,85,247,0.5)]' : 'bg-red-950/95 shadow-[inset_0_0_200px_rgba(255,0,0,0.5)]'}`}>
-                {gameState.status === GameStatus.VICTORY ? <Shield size={160} className="text-cyan-400 mb-10 drop-shadow-[0_0_60px_rgba(34,211,238,0.8)]"/> : <Zap size={160} className="text-red-500 mb-10 animate-pulse drop-shadow-[0_0_60px_red]"/>}
-                <h2 className="text-9xl font-black text-white mb-16 tracking-tighter italic uppercase underline decoration-purple-500 decoration-8 underline-offset-[20px]">
-                    {gameState.status === GameStatus.VICTORY ? 'OPS CLEAR' : 'LINK LOST'}
+            <div className={`absolute inset-0 flex flex-col items-center justify-center p-12 text-center z-50 backdrop-blur-3xl ${gameState.status === GameStatus.VICTORY ? 'bg-purple-950/95' : 'bg-red-950/95'}`}>
+                {gameState.status === GameStatus.VICTORY ? <Shield size={200} className="text-cyan-400 mb-10 drop-shadow-[0_0_80px_rgba(34,211,238,1)]"/> : <Zap size={200} className="text-red-500 mb-10 animate-bounce drop-shadow-[0_0_80px_red]"/>}
+                <h2 className="text-[120px] font-black text-white mb-16 tracking-tighter italic">
+                    {gameState.status === GameStatus.VICTORY ? 'MISSION CLEAR' : 'LINK SEVERED'}
                 </h2>
-                <button onClick={() => window.location.reload()} className="group flex items-center gap-6 px-20 py-8 bg-white text-black rounded-full font-black text-3xl hover:bg-cyan-400 transition-all shadow-[0_0_50px_rgba(255,255,255,0.3)] hover:scale-105 active:scale-95">
-                    <RotateCcw size={40} className="group-hover:rotate-180 transition-transform duration-700" /> 战术重启
+                <button onClick={() => window.location.reload()} className="group flex items-center gap-8 px-24 py-10 bg-white text-black rounded-full font-black text-4xl hover:bg-cyan-400 transition-all shadow-[0_0_80px_rgba(255,255,255,0.4)]">
+                    <RotateCcw size={48} className="group-hover:rotate-180 transition-transform duration-700" /> 战术复归
                 </button>
             </div>
         )}
       </div>
       
-       <div className="mt-10 flex justify-between w-[800px] text-purple-950 font-black text-[12px] tracking-[0.6em] uppercase opacity-50">
-        <span>UNIT: ZILAN-ZERO // SECTOR: URBAN-CORE</span>
-        <span className="flex items-center gap-4 animate-pulse"><Volume2 size={18} /> ENCRYPTED COMMS ACTIVE</span>
+       <div className="mt-12 flex justify-between w-[800px] text-purple-950 font-black text-[14px] tracking-[0.8em] uppercase opacity-40">
+        <span>Unit: Z-Alpha // Grid: Urban-Core</span>
+        <span className="flex items-center gap-6"><Volume2 size={24} /> Sync Status: 100%</span>
       </div>
     </div>
   );
