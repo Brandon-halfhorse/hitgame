@@ -14,9 +14,9 @@ export enum EntityType {
 
 export enum WeaponType {
   FISTS = 'FISTS',
-  SWORD = 'SWORD', // Balanced
-  HAMMER = 'HAMMER', // Slow, High Dmg, Knockback
-  DUAL_BLADES = 'DUAL_BLADES' // Fast, Low Dmg
+  SWORD = 'SWORD', 
+  HAMMER = 'HAMMER', 
+  DUAL_BLADES = 'DUAL_BLADES'
 }
 
 export interface Position {
@@ -28,7 +28,7 @@ export interface Item {
   id: number;
   type: 'WEAPON' | 'HEALTH_PACK' | 'CURRENCY';
   subtype?: WeaponType;
-  amount?: number; // For currency or healing amount
+  amount?: number;
   pos: Position;
   size: number;
 }
@@ -42,20 +42,19 @@ export interface Entity {
   health: number;
   maxHealth: number;
   
-  // Combat stats
   weapon: WeaponType;
   damage: number;
   attackCooldown: number;
   maxAttackCooldown: number;
   
-  // States
   isAttacking?: boolean;
+  isMoving?: boolean;
   hitFlashTimer?: number;
   facing: 'left' | 'right';
   visualUrl: string;
   
-  // Skills
   dashCooldown?: number;
+  upgradeLevel?: number;
 }
 
 export interface FloatingText {
@@ -64,7 +63,7 @@ export interface FloatingText {
   y: number;
   text: string;
   color: string;
-  life: number; // Frames to live
+  life: number;
   velocity: { x: number; y: number };
 }
 
@@ -75,7 +74,7 @@ export interface GameState {
   particles: FloatingText[];
   level: number;
   score: number;
-  currency: number; // New: Data Shards
+  currency: number;
   status: GameStatus;
   gameBounds: { width: number; height: number };
   loreText: string;
@@ -88,6 +87,7 @@ export interface InputState {
   left: boolean;
   right: boolean;
   attack: boolean;
-  skill1: boolean; // Ambush
-  buy: boolean; // Buy health
+  skill1: boolean;
+  buy: boolean;
+  upgrade: boolean;
 }

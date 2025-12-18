@@ -4,13 +4,8 @@ let ai: GoogleGenAI | null = null;
 
 const getAiClient = () => {
   if (!ai) {
-    // Safety check: process might not be defined in standard browser environments
-    // This prevents the "ReferenceError: process is not defined" crash
     const apiKey = (typeof process !== 'undefined' && process.env && process.env.API_KEY) ? process.env.API_KEY : '';
-    
-    if (apiKey) {
-      ai = new GoogleGenAI({ apiKey });
-    }
+    if (apiKey) { ai = new GoogleGenAI({ apiKey }); }
   }
   return ai;
 };
@@ -18,42 +13,37 @@ const getAiClient = () => {
 export const generateLevelLore = async (level: number, isBoss: boolean): Promise<string> => {
   try {
     const client = getAiClient();
-    if (!client) {
-      // Fallback if no API key is present
-      return `第 ${level} 关 - 准备战斗 (系统离线模式)`;
-    }
+    if (!client) return `战区 ${level}: 麦野遭遇战。清除所有威胁。`;
 
     const prompt = `
-      为一款黑暗风格的3D动作网页游戏写一段简短的中文介绍（1句话）。
-      当前是第 ${level} 关。
-      背景：玩家是一名孤独的幸存者，正在对抗被腐蚀的虚拟体。
-      ${isBoss ? "这是最后一关，有一个巨大的BOSS。" : "敌人变得越来越快。"}
-      不要使用Markdown，只返回纯文本。
+      Write a short (1 sentence) cinematic combat update for a special forces mission in a wheat field.
+      Mission Level: ${level}. ${isBoss ? "The enemy leader is here." : "More thugs are closing in."}
+      Tone: Gritty, military, Chinese language.
+      Do not use Markdown.
     `;
 
     const response = await client.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
     });
     
-    return response.text || `第 ${level} 关 - 准备战斗`;
+    return response.text || `战区 ${level} 已锁定，准备交火。`;
   } catch (error) {
-    console.error("Gemini API Error:", error);
-    return `第 ${level} 关启动。祝你好运。`;
+    return `战区 ${level} 部署完毕。小心地雷。`;
   }
 };
 
 export const generateVictoryMessage = async (): Promise<string> => {
     try {
         const client = getAiClient();
-        if (!client) return "所有试炼已完成。胜利！";
+        if (!client) return "全线大捷，撤离点已激活。";
 
         const response = await client.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: "为一位拯救了数字世界的英雄写一句史诗般的中文胜利祝贺语。",
+          model: 'gemini-3-flash-preview',
+          contents: "Write a high-stakes military victory quote in Chinese (1 sentence).",
         });
-        return response.text || "胜利属于你！";
+        return response.text || "任务圆满完成。";
       } catch (error) {
-        return "所有试炼已完成。胜利！";
+        return "大捷！";
       }
 }
