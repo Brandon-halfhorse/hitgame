@@ -10,10 +10,11 @@ export const ITEM_SIZE = 50;
 export const PLAYER_SPEED = 9; 
 export const DASH_SPEED = 28;
 
-// THEME COLORS: High-Vibrancy Cyberpunk
-export const COLOR_NEON_PURPLE = '#df24ff'; // 极光紫 (更亮)
-export const COLOR_NEON_GREEN = '#39ff14';  // 荧光绿
-export const COLOR_NEON_CYAN = '#00f3ff';   // 电子青
+// THEME COLORS
+export const COLOR_NEON_PURPLE = '#df24ff'; 
+export const COLOR_NEON_GREEN = '#39ff14';  
+export const COLOR_NEON_CYAN = '#00f3ff';   
+export const COLOR_DREAMY_BLUE = '#007aff';
 export const COLOR_STREET_DARK = '#020204';
 
 export const WEAPON_STATS = {
@@ -23,16 +24,17 @@ export const WEAPON_STATS = {
     DUAL_BLADES: { name: '等离子弧刃', damage: 55, cooldown: 10, range: 110, color: COLOR_NEON_CYAN }, 
 };
 
-export const SKILL_COOLDOWN_AMBUSH = 150; 
 export const HEAL_COST = 60; 
 export const HEAL_AMOUNT = 50;
 export const UPGRADE_COST_BASE = 150;
 
-// ASSETS: High-Stability AI Prompts
+// TEAMMATES (Consistent style, different colors)
 export const PLAYER_IMG = "https://image.pollinations.ai/prompt/3d%20cyberpunk%20anime%20girl%20soldier%20neon%20purple%20exoskeleton%20armor%20short%20glowing%20hair%20full%20body%20white%20background?width=512&height=512&nologo=true"; 
+export const ALLY_IMG_CYAN = "https://image.pollinations.ai/prompt/3d%20cyberpunk%20anime%20soldier%20neon%20cyan%20armor%20full%20body%20white%20background?width=512&height=512&nologo=true";
+export const ALLY_IMG_GOLD = "https://image.pollinations.ai/prompt/3d%20cyberpunk%20anime%20soldier%20neon%20gold%20armor%20full%20body%20white%20background?width=512&height=512&nologo=true";
+export const ALLY_IMG_ROSE = "https://image.pollinations.ai/prompt/3d%20cyberpunk%20anime%20soldier%20neon%20rose%20pink%20armor%20full%20body%20white%20background?width=512&height=512&nologo=true";
 
 export const ENEMY_IMG_BASE = "https://image.pollinations.ai/prompt/3d%20anime%20gangster%20punk%20cyborg%20parts%20yellow%20hair%20angry%20full%20body%20white%20background?width=512&height=512&nologo=true";
-
 export const BOSS_IMG = "https://image.pollinations.ai/prompt/3d%20anime%20huge%20cyborg%20fat%20man%20boss%20red%20spiky%20hair%20exposed%20belly%20cybernetic%20red%20coat%20holding%20energy%20bottle%20angry%20white%20background?width=512&height=512&nologo=true";
 
 export const LEVEL_CONFIG = {

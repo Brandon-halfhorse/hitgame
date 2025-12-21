@@ -3,11 +3,12 @@ import React, { useMemo } from 'react';
 import { Entity, EntityType, FloatingText, Item, WeaponType } from '../types';
 import { WEAPON_STATS, ITEM_SIZE, COLOR_NEON_PURPLE, COLOR_NEON_GREEN, COLOR_NEON_CYAN } from '../constants';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sword, Hammer, Scissors, Crosshair, Zap, Building2, Store, Car, Radio, Cpu } from 'lucide-react';
+import { Sword, Hammer, Scissors, Crosshair, Zap, Building2, Store, Car, Radio, Cpu, User } from 'lucide-react';
 
 interface GameCanvasProps {
   player: Entity;
   enemies: Entity[];
+  allies?: Entity[]; // Optional allies
   items: Item[];
   particles: FloatingText[];
   width: number;
@@ -16,10 +17,11 @@ interface GameCanvasProps {
   isCelebrating?: boolean;
 }
 
-const WeaponVisual: React.FC<{ type: WeaponType; isAttacking?: boolean }> = ({ type, isAttacking }) => {
-    const color = type === WeaponType.SWORD ? COLOR_NEON_GREEN : 
-                  type === WeaponType.DUAL_BLADES ? COLOR_NEON_CYAN : 
-                  type === WeaponType.HAMMER ? '#ff9f0a' : COLOR_NEON_PURPLE;
+const WeaponVisual: React.FC<{ type: WeaponType; isAttacking?: boolean; colorOverride?: string }> = ({ type, isAttacking, colorOverride }) => {
+    const defaultColor = type === WeaponType.SWORD ? COLOR_NEON_GREEN : 
+                         type === WeaponType.DUAL_BLADES ? COLOR_NEON_CYAN : 
+                         type === WeaponType.HAMMER ? '#ff9f0a' : COLOR_NEON_PURPLE;
+    const color = colorOverride || defaultColor;
 
     return (
         <motion.div
@@ -40,7 +42,6 @@ const WeaponVisual: React.FC<{ type: WeaponType; isAttacking?: boolean }> = ({ t
             {type === WeaponType.SWORD && <Sword size={48} style={{ color }} />}
             {type === WeaponType.FISTS && <Crosshair size={40} style={{ color }} />}
             
-            {/* Energy Core Effect */}
             <motion.div 
                 className="absolute inset-0 blur-xl opacity-50"
                 style={{ backgroundColor: color }}
@@ -54,6 +55,7 @@ const WeaponVisual: React.FC<{ type: WeaponType; isAttacking?: boolean }> = ({ t
 const AnimatedCharacter: React.FC<{ entity: Entity; isCelebrating?: boolean }> = ({ entity, isCelebrating }) => {
     const isMoving = entity.isMoving && !isCelebrating;
     const isPlayer = entity.type === EntityType.PLAYER;
+    const isAlly = entity.type === EntityType.ALLY;
 
     const walkDuration = 0.38;
 
@@ -68,7 +70,6 @@ const AnimatedCharacter: React.FC<{ entity: Entity; isCelebrating?: boolean }> =
             }}
             transition={{ repeat: Infinity, duration: walkDuration * 2 }}
         >
-            {/* Body parts clipping & animation */}
             <motion.div 
                 className="absolute inset-0 z-30" 
                 style={{ clipPath: 'inset(0 0 78% 0)' }}
@@ -82,7 +83,7 @@ const AnimatedCharacter: React.FC<{ entity: Entity; isCelebrating?: boolean }> =
                 className="absolute inset-0 z-20"
                 style={{ 
                     clipPath: 'inset(22% 0 42% 0)',
-                    filter: entity.hitFlashTimer && entity.hitFlashTimer > 0 ? `drop-shadow(0 0 20px ${COLOR_NEON_PURPLE}) brightness(5)` : 'none'
+                    filter: entity.hitFlashTimer && entity.hitFlashTimer > 0 ? `drop-shadow(0 0 20px white) brightness(5)` : 'none'
                 }}
                 animate={isMoving ? { y: [0, -6, 0] } : { y: [0, -2, 0] }}
                 transition={{ repeat: Infinity, duration: walkDuration }}
@@ -90,7 +91,6 @@ const AnimatedCharacter: React.FC<{ entity: Entity; isCelebrating?: boolean }> =
                 <img src={entity.visualUrl} className="w-full h-full object-contain" style={{ transform: entity.facing === 'left' ? 'scaleX(-1)' : '' }} />
             </motion.div>
 
-            {/* Legs */}
             <motion.div className="absolute inset-0 z-10 origin-[50%_60%]" style={{ clipPath: 'inset(58% 50% 0 0)' }} animate={isMoving ? { rotate: [40, -40, 40], x: [0, 10, 0], y: [0, -5, 0] } : {}} transition={{ repeat: Infinity, duration: walkDuration, ease: "linear" }}>
                 <img src={entity.visualUrl} className="w-full h-full object-contain" style={{ transform: entity.facing === 'left' ? 'scaleX(-1)' : '' }} />
             </motion.div>
@@ -98,10 +98,9 @@ const AnimatedCharacter: React.FC<{ entity: Entity; isCelebrating?: boolean }> =
                 <img src={entity.visualUrl} className="w-full h-full object-contain" style={{ transform: entity.facing === 'left' ? 'scaleX(-1)' : '' }} />
             </motion.div>
 
-            {/* Weapon */}
             <div className={`absolute bottom-[58%] ${entity.facing === 'right' ? '-right-10' : '-left-10'} z-40`}>
                 <div style={{ transform: entity.facing === 'left' ? 'scaleX(-1)' : '' }}>
-                    <WeaponVisual type={entity.weapon} isAttacking={entity.isAttacking} />
+                    <WeaponVisual type={entity.weapon} isAttacking={entity.isAttacking} colorOverride={isAlly ? COLOR_NEON_CYAN : undefined} />
                 </div>
             </div>
         </motion.div>
@@ -110,6 +109,7 @@ const AnimatedCharacter: React.FC<{ entity: Entity; isCelebrating?: boolean }> =
 
 const EntityRenderer: React.FC<{ entity: Entity; isCelebrating?: boolean }> = ({ entity, isCelebrating }) => {
   const isPlayer = entity.type === EntityType.PLAYER;
+  const isAlly = entity.type === EntityType.ALLY;
   
   return (
     <div
@@ -132,9 +132,14 @@ const EntityRenderer: React.FC<{ entity: Entity; isCelebrating?: boolean }> = ({
                     LNK: STABLE.{entity.upgradeLevel}
                 </div>
             )}
+            {isAlly && (
+                <div className="bg-black/60 text-yellow-400 text-[10px] font-black px-2 py-0.5 rounded border border-yellow-400/50 shadow-[0_0_10px_yellow] italic uppercase tracking-tighter">
+                    SUPPORT: ACTIVE
+                </div>
+            )}
             <div className="w-24 h-2 bg-black/90 rounded-full border border-gray-800 overflow-hidden p-[1px]">
                 <div 
-                    className={`h-full transition-all duration-300 rounded-full ${isPlayer ? 'bg-gradient-to-r from-purple-600 via-cyan-400 to-white shadow-[0_0_10px_#a855f7]' : 'bg-gradient-to-r from-red-600 to-orange-400 shadow-[0_0_10px_red]'}`} 
+                    className={`h-full transition-all duration-300 rounded-full ${isPlayer || isAlly ? 'bg-gradient-to-r from-purple-600 via-cyan-400 to-white shadow-[0_0_10px_#a855f7]' : 'bg-gradient-to-r from-red-600 to-orange-400 shadow-[0_0_10px_red]'}`} 
                     style={{ width: `${(entity.health / entity.maxHealth) * 100}%` }}
                 />
             </div>
@@ -143,18 +148,16 @@ const EntityRenderer: React.FC<{ entity: Entity; isCelebrating?: boolean }> = ({
   );
 };
 
-export const GameCanvas: React.FC<GameCanvasProps> = ({ player, enemies, items, particles, width, height, shakeIntensity, isCelebrating }) => {
+export const GameCanvas: React.FC<GameCanvasProps> = ({ player, enemies, allies = [], items, particles, width, height, shakeIntensity, isCelebrating }) => {
   
   const streetElements = useMemo(() => {
     const items = [];
-    // 3D Perspective Grid
     for (let i = -20; i < 40; i++) {
         items.push(
             <div key={`v-line-${i}`} className="absolute h-[200%] w-[1px] bg-purple-500/10" 
                  style={{ left: `${(i/20)*100}%`, top: '-50%', transform: 'perspective(1000px) rotateX(85deg)', transformOrigin: 'top' }} />
         );
     }
-    // Neon Floaters
     for (let i = 0; i < 20; i++) {
         items.push(
             <motion.div 
@@ -192,11 +195,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ player, enemies, items, 
         <div className="absolute inset-0 z-0">
             <div className="absolute bottom-0 w-full h-full bg-gradient-to-t from-[#050510] via-transparent to-[#010103]" />
             {streetElements}
-            {/* Perspective Fog */}
             <div className="absolute top-0 w-full h-[40%] bg-gradient-to-b from-black to-transparent" />
         </div>
 
-        {/* Loot */}
         {items.map(item => (
             <motion.div key={item.id} className="absolute" style={{ left: item.pos.x, top: item.pos.y, zIndex: Math.floor(item.pos.y) }}>
                 <motion.div animate={{ y: [0, -20, 0], scale: [1, 1.1, 1] }} transition={{ repeat: Infinity, duration: 1.5 }}>
@@ -207,13 +208,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ player, enemies, items, 
             </motion.div>
         ))}
 
-        {/* Entities */}
-        {[...enemies, player]
+        {[...enemies, ...allies, player]
             .sort((a, b) => a.pos.y - b.pos.y)
             .map(entity => <EntityRenderer key={entity.id} entity={entity} isCelebrating={isCelebrating} />)
         }
 
-        {/* Combat VFX / Blood / Particles */}
         <AnimatePresence>
             {particles.map(p => (
                 <motion.div 
@@ -234,7 +233,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ player, enemies, items, 
             ))}
         </AnimatePresence>
 
-        {/* Vignette & Glitch HUD Layer */}
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_40%,rgba(0,0,0,0.7)_130%)] pointer-events-none" />
         <div className="absolute inset-0 opacity-[0.03] bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] pointer-events-none" />
     </div>

@@ -1,7 +1,9 @@
+
 export enum GameStatus {
   IDLE = 'IDLE',
   PLAYING = 'PLAYING',
   LEVEL_TRANSITION = 'LEVEL_TRANSITION',
+  WAREHOUSE = 'WAREHOUSE', // New Hub state
   GAME_OVER = 'GAME_OVER',
   VICTORY = 'VICTORY'
 }
@@ -9,7 +11,8 @@ export enum GameStatus {
 export enum EntityType {
   PLAYER = 'PLAYER',
   ENEMY_MELEE = 'ENEMY_MELEE',
-  ENEMY_BOSS = 'ENEMY_BOSS'
+  ENEMY_BOSS = 'ENEMY_BOSS',
+  ALLY = 'ALLY' // New Ally type
 }
 
 export enum WeaponType {
@@ -55,6 +58,7 @@ export interface Entity {
   
   dashCooldown?: number;
   upgradeLevel?: number;
+  targetId?: string; // For Allies to target enemies
 }
 
 export interface FloatingText {
@@ -67,9 +71,18 @@ export interface FloatingText {
   velocity: { x: number; y: number };
 }
 
+export interface Task {
+  id: string;
+  title: string;
+  description: string;
+  reward: number;
+  completed: boolean;
+}
+
 export interface GameState {
   player: Entity;
   enemies: Entity[];
+  allies: Entity[]; // Track recruited teammates
   items: Item[];
   particles: FloatingText[];
   level: number;
@@ -79,6 +92,8 @@ export interface GameState {
   gameBounds: { width: number; height: number };
   loreText: string;
   shakeIntensity: number;
+  hasRecruitedFriend: boolean;
+  tasks: Task[];
 }
 
 export interface InputState {

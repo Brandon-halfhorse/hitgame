@@ -1,11 +1,18 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { GameCanvas } from './components/GameCanvas';
-import { GameState, GameStatus, Entity, EntityType, FloatingText, WeaponType, Item } from './types';
-import { CANVAS_WIDTH, CANVAS_HEIGHT, PLAYER_SIZE, PLAYER_SPEED, LEVEL_CONFIG, PLAYER_IMG, ENEMY_IMG_BASE, ENEMY_SIZE, BOSS_SIZE, BOSS_IMG, WEAPON_STATS, ITEM_SIZE, HEAL_COST, HEAL_AMOUNT, UPGRADE_COST_BASE, COLOR_NEON_PURPLE, COLOR_NEON_CYAN, COLOR_NEON_GREEN } from './constants';
+import { WarehouseView } from './components/WarehouseView';
+import { GameState, GameStatus, Entity, EntityType, FloatingText, WeaponType, Item, Task } from './types';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, PLAYER_SIZE, PLAYER_SPEED, LEVEL_CONFIG, PLAYER_IMG, ENEMY_IMG_BASE, ENEMY_SIZE, BOSS_SIZE, BOSS_IMG, WEAPON_STATS, ITEM_SIZE, HEAL_COST, HEAL_AMOUNT, UPGRADE_COST_BASE, COLOR_NEON_PURPLE, COLOR_NEON_CYAN, COLOR_NEON_GREEN, ALLY_IMG_GOLD } from './constants';
 import { generateLevelLore } from './services/geminiService';
 import { audioManager } from './services/audioService';
 import { Play, RotateCcw, Shield, Heart, Zap, Volume2, ShoppingBag, ArrowUpCircle, Activity } from 'lucide-react';
+
+const INITIAL_TASKS: Task[] = [
+    { id: 't1', title: '信号回收', description: '清除街区外围的低级程序（已模拟）', reward: 200, completed: false },
+    { id: 't2', title: '能源补给', description: '从仓库底层回收备用电池盒', reward: 350, completed: false },
+    { id: 't3', title: '系统纠错', description: '重置受损的AI逻辑网格', reward: 500, completed: false }
+];
 
 export default function App() {
   const [gameState, setGameState] = useState<GameState>({
@@ -27,6 +34,7 @@ export default function App() {
       upgradeLevel: 1
     },
     enemies: [],
+    allies: [],
     items: [],
     particles: [],
     level: 1,
@@ -35,7 +43,9 @@ export default function App() {
     status: GameStatus.IDLE,
     gameBounds: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
     loreText: "紫岚战队，全员待命。目标已锁定赛博街区，清除所有暴徒。",
-    shakeIntensity: 0
+    shakeIntensity: 0,
+    hasRecruitedFriend: false,
+    tasks: INITIAL_TASKS
   });
 
   const [isCelebrating, setIsCelebrating] = useState(false);
@@ -87,7 +97,6 @@ export default function App() {
   };
 
   const spawnBloodSplat = (x: number, y: number, currentParticles: FloatingText[]) => {
-      // Spawn 5 purple "blood" particles
       for (let i = 0; i < 6; i++) {
         particleIdCounter.current++;
         currentParticles.push({ 
@@ -116,6 +125,7 @@ export default function App() {
     const input = inputRef.current;
     let newPlayer = { ...currentState.player };
     let newEnemies = currentState.enemies.map(e => ({...e}));
+    let newAllies = currentState.allies.map(a => ({...a}));
     let newItems = [...currentState.items];
     let newParticles = currentState.particles.map(p => ({...p, life: p.life - 1})).filter(p => p.life > 0);
     let newStatus: GameStatus = currentState.status;
@@ -123,7 +133,7 @@ export default function App() {
     let newCurrency = currentState.currency;
     let newShake = Math.max(0, currentState.shakeIntensity - 3);
 
-    // --- Actions ---
+    // --- Upgrade Logic ---
     const upgradeCost = UPGRADE_COST_BASE * (newPlayer.upgradeLevel || 1);
     if (input.upgrade && newCurrency >= upgradeCost) {
         newCurrency -= upgradeCost;
@@ -168,7 +178,6 @@ export default function App() {
         newPlayer.attackCooldown = newPlayer.maxAttackCooldown;
         audioManager.playSfx('attack');
         const range = WEAPON_STATS[newPlayer.weapon].range;
-        
         newEnemies.forEach(enemy => {
             const dist = Math.hypot((newPlayer.pos.x + newPlayer.size/2) - (enemy.pos.x + enemy.size/2), (newPlayer.pos.y + newPlayer.size/2) - (enemy.pos.y + enemy.size/2));
             if (dist < range + 70) {
@@ -181,6 +190,45 @@ export default function App() {
             }
         });
     }
+
+    // --- Allies AI ---
+    newAllies.forEach(ally => {
+        if (ally.attackCooldown > 0) ally.attackCooldown--;
+        else ally.isAttacking = false;
+
+        // Simple follow player or fight nearest enemy
+        const target = newEnemies[0];
+        if (target) {
+            const adx = (target.pos.x + target.size/2) - (ally.pos.x + ally.size/2);
+            const ady = (target.pos.y + target.size/2) - (ally.pos.y + ally.size/2);
+            const dist = Math.hypot(adx, ady);
+            ally.isMoving = dist > 100;
+            if (dist > 80) {
+                ally.pos.x += (adx / dist) * ally.speed;
+                ally.pos.y += (ady / dist) * ally.speed;
+                ally.facing = adx > 0 ? 'right' : 'left';
+            } else if (ally.attackCooldown <= 0) {
+                ally.isAttacking = true;
+                ally.attackCooldown = ally.maxAttackCooldown;
+                target.health -= ally.damage;
+                target.hitFlashTimer = 8;
+                spawnFloatingText(target.pos.x, target.pos.y, `ALLY: -${ally.damage}`, COLOR_NEON_CYAN, newParticles);
+            }
+        } else {
+            // No enemies? Stay near player
+            const adx = (newPlayer.pos.x - 50) - ally.pos.x;
+            const ady = (newPlayer.pos.y) - ally.pos.y;
+            const dist = Math.hypot(adx, ady);
+            if (dist > 50) {
+                ally.pos.x += (adx / dist) * ally.speed;
+                ally.pos.y += (ady / dist) * ally.speed;
+                ally.facing = adx > 0 ? 'right' : 'left';
+                ally.isMoving = true;
+            } else {
+                ally.isMoving = false;
+            }
+        }
+    });
 
     // Items
     newItems = newItems.filter(item => {
@@ -202,7 +250,7 @@ export default function App() {
         return true;
     });
 
-    // --- AI ---
+    // --- Enemies ---
     const aliveEnemies: Entity[] = [];
     newEnemies.forEach(enemy => {
         if (enemy.hitFlashTimer && enemy.hitFlashTimer > 0) enemy.hitFlashTimer--;
@@ -224,7 +272,6 @@ export default function App() {
                 newPlayer.hitFlashTimer = 12;
                 audioManager.playSfx('damage');
                 spawnFloatingText(newPlayer.pos.x, newPlayer.pos.y, `!! SYSTEM ERROR !!`, "#ffffff", newParticles);
-                // Purple Blood Effect
                 spawnBloodSplat(newPlayer.pos.x + newPlayer.size/2, newPlayer.pos.y + newPlayer.size/2, newParticles);
                 newShake = 22;
             }
@@ -242,12 +289,16 @@ export default function App() {
         audioManager.playSfx('victory');
         setTimeout(() => {
             setIsCelebrating(false);
-            setGameState(p => ({ ...p, status: p.level >= 5 ? GameStatus.VICTORY : GameStatus.LEVEL_TRANSITION }));
+            if (currentState.level === 1) {
+                setGameState(p => ({ ...p, status: GameStatus.WAREHOUSE }));
+            } else {
+                setGameState(p => ({ ...p, status: p.level >= 5 ? GameStatus.VICTORY : GameStatus.LEVEL_TRANSITION }));
+            }
         }, 2500);
     }
 
     frameCountRef.current++;
-    setGameState(prev => ({ ...prev, player: newPlayer, enemies: newEnemies, items: newItems, particles: newParticles, status: isCelebrating ? prev.status : newStatus, score: newScore, currency: newCurrency, shakeIntensity: newShake }));
+    setGameState(prev => ({ ...prev, player: newPlayer, enemies: newEnemies, allies: newAllies, items: newItems, particles: newParticles, status: isCelebrating ? prev.status : newStatus, score: newScore, currency: newCurrency, shakeIntensity: newShake }));
   };
 
   const gameLoop = () => { updateGame(); loopRef.current = requestAnimationFrame(gameLoop); };
@@ -262,8 +313,19 @@ export default function App() {
   const startLevel = (levelNum: number, pState: Entity, score: number, curr: number, lore: string) => {
     const config = LEVEL_CONFIG[levelNum as keyof typeof LEVEL_CONFIG];
     const enemies: Entity[] = [];
+    const allies: Entity[] = [];
+
+    // If recruited, add the ally to the field
+    if (gameState.hasRecruitedFriend) {
+        allies.push({
+            id: 'ally_gingo', type: EntityType.ALLY, pos: { x: 100, y: CANVAS_HEIGHT/2 },
+            size: PLAYER_SIZE, speed: PLAYER_SPEED * 0.8, health: 300, maxHealth: 300,
+            weapon: WeaponType.SWORD, damage: 30, attackCooldown: 0, maxAttackCooldown: 30, facing: 'right', visualUrl: ALLY_IMG_GOLD
+        });
+    }
+
     for(let i=0; i<config.enemyCount; i++) {
-        const uniqueSeed = `zilan_s9_${levelNum}_${i}_${Date.now()}`;
+        const uniqueSeed = `zilan_s10_${levelNum}_${i}_${Date.now()}`;
         enemies.push({
             id: `e_${levelNum}_${i}`, type: EntityType.ENEMY_MELEE,
             pos: { x: Math.random() > 0.5 ? -250 : CANVAS_WIDTH + 250, y: Math.random() * CANVAS_HEIGHT },
@@ -280,12 +342,8 @@ export default function App() {
             visualUrl: `${BOSS_IMG}&seed=zilan_boss_${Date.now()}`
         });
     }
-    const items: Item[] = [];
-    if (levelNum > 0) {
-        items.push({ id: Date.now(), type: 'WEAPON', subtype: [WeaponType.SWORD, WeaponType.HAMMER, WeaponType.DUAL_BLADES][Math.floor(Math.random()*3)], pos: { x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT/2 }, size: ITEM_SIZE });
-    }
-
-    setGameState({ ...gameState, player: pState, enemies, items, level: levelNum, score, currency: curr, status: GameStatus.PLAYING, loreText: lore });
+    
+    setGameState(prev => ({ ...prev, player: pState, enemies, allies, items: [], level: levelNum, score, currency: curr, status: GameStatus.PLAYING, loreText: lore }));
     audioManager.playBgm(levelNum);
   };
 
@@ -303,7 +361,35 @@ export default function App() {
   return (
     <div className="w-full min-h-screen flex flex-col items-center justify-center text-white bg-[#010102] relative font-sans overflow-hidden">
       
-      {/* HUD: Ultra Modern Cyberpunk */}
+      {/* Warehouse View Overlay */}
+      {gameState.status === GameStatus.WAREHOUSE && (
+          <WarehouseView 
+            currency={gameState.currency}
+            tasks={gameState.tasks}
+            hasRecruited={gameState.hasRecruitedFriend}
+            onClose={() => setGameState(p => ({ ...p, status: GameStatus.LEVEL_TRANSITION }))}
+            onBuy={(item, cost) => {
+                if (gameState.currency >= cost) {
+                    setGameState(p => ({ ...p, currency: p.currency - cost }));
+                    audioManager.playSfx('buy');
+                }
+            }}
+            onRecruit={() => setGameState(p => ({ ...p, hasRecruitedFriend: true }))}
+            onCompleteTask={(tid) => {
+                const task = gameState.tasks.find(t => t.id === tid);
+                if (task && !task.completed) {
+                    setGameState(p => ({
+                        ...p,
+                        currency: p.currency + task.reward,
+                        tasks: p.tasks.map(t => t.id === tid ? { ...t, completed: true } : t)
+                    }));
+                    audioManager.playSfx('loot');
+                }
+            }}
+          />
+      )}
+
+      {/* HUD Layer */}
       <div className="w-[800px] flex justify-between items-end mb-2 p-6 bg-black/90 rounded-t-[2.5rem] border-x-4 border-t-4 border-purple-500/30 backdrop-blur-3xl z-20 shadow-[0_-25px_60px_rgba(168,85,247,0.4)]">
         <div className="flex gap-8">
             <div className="flex flex-col">
@@ -317,23 +403,14 @@ export default function App() {
             </div>
             
             <div className="flex gap-4">
-                {/* UPGRADE [U] - AURORA PURPLE */}
-                <button 
-                    onClick={() => inputRef.current.upgrade = true}
-                    className={`group relative flex items-center gap-4 px-6 py-3 rounded-2xl border-2 transition-all active:scale-90 overflow-hidden ${gameState.currency >= UPGRADE_COST_BASE * (gameState.player.upgradeLevel || 1) ? 'bg-purple-600 border-purple-200 text-white shadow-[0_0_40px_rgba(223,36,255,0.7)]' : 'bg-gray-950 border-gray-800 text-gray-700'}`}
-                >
+                <button onClick={() => inputRef.current.upgrade = true} className={`group flex items-center gap-4 px-6 py-3 rounded-2xl border-2 transition-all active:scale-90 ${gameState.currency >= UPGRADE_COST_BASE * (gameState.player.upgradeLevel || 1) ? 'bg-purple-600 border-purple-200 text-white shadow-[0_0_40px_rgba(223,36,255,0.7)]' : 'bg-gray-950 border-gray-800 text-gray-700'}`}>
                     <ArrowUpCircle size={30} className="group-hover:rotate-180 transition-transform duration-700" />
                     <div className="flex flex-col items-start leading-none">
                         <span className="text-[10px] font-black tracking-widest opacity-80 uppercase">Overclock [U]</span>
                         <span className="text-xl font-black">{UPGRADE_COST_BASE * (gameState.player.upgradeLevel || 1)}</span>
                     </div>
                 </button>
-
-                {/* HEAL [B] - ENERGY GREEN */}
-                <button 
-                    onClick={() => inputRef.current.buy = true}
-                    className={`group relative flex items-center gap-4 px-6 py-3 rounded-2xl border-2 transition-all active:scale-90 overflow-hidden ${gameState.currency >= HEAL_COST ? 'bg-green-600 border-green-200 text-white shadow-[0_0_40px_rgba(57,255,20,0.5)]' : 'bg-gray-950 border-gray-800 text-gray-700'}`}
-                >
+                <button onClick={() => inputRef.current.buy = true} className={`group flex items-center gap-4 px-6 py-3 rounded-2xl border-2 transition-all active:scale-90 ${gameState.currency >= HEAL_COST ? 'bg-green-600 border-green-200 text-white shadow-[0_0_40px_rgba(57,255,20,0.5)]' : 'bg-gray-950 border-gray-800 text-gray-700'}`}>
                     <Heart size={30} className="group-hover:scale-125 transition-transform" />
                     <div className="flex flex-col items-start leading-none">
                         <span className="text-[10px] font-black tracking-widest opacity-80 uppercase">Repair [B]</span>
@@ -359,23 +436,23 @@ export default function App() {
 
       <div className="relative z-10">
         <GameCanvas 
-            player={gameState.player} enemies={gameState.enemies} items={gameState.items} particles={gameState.particles}
+            player={gameState.player} 
+            enemies={gameState.enemies} 
+            items={gameState.items} 
+            particles={gameState.particles}
             width={CANVAS_WIDTH} height={CANVAS_HEIGHT} shakeIntensity={gameState.shakeIntensity} isCelebrating={isCelebrating}
         />
         
-        {/* State Overlays */}
         {gameState.status === GameStatus.IDLE && (
             <div className="absolute inset-0 bg-black/99 flex flex-col items-center justify-center p-12 text-center z-50 backdrop-blur-3xl">
-                <div className="absolute top-10 left-10 text-purple-800/10 text-[15vw] font-black select-none pointer-events-none italic">ZILAN</div>
                 <h1 className="text-[120px] font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-purple-300 to-purple-800 mb-10 italic tracking-tighter drop-shadow-[0_0_60px_rgba(168,85,247,0.8)]">
                     紫岚战队
                 </h1>
                 <p className="text-cyan-100/60 text-3xl mb-16 max-w-4xl italic font-thin tracking-[0.1em] border-y-2 border-purple-500/30 py-10 uppercase leading-relaxed">
                     "{gameState.loreText}"
                 </p>
-                <button onClick={startGame} className="group relative px-28 py-10 bg-white text-black rounded-full font-black text-5xl transition-all hover:scale-110 hover:shadow-[0_0_120px_rgba(255,255,255,0.6)] flex items-center gap-8 overflow-hidden">
+                <button onClick={startGame} className="group relative px-28 py-10 bg-white text-black rounded-full font-black text-5xl transition-all hover:scale-110 hover:shadow-[0_0_120px_rgba(255,255,255,0.6)] flex items-center gap-8">
                     <Play size={60} fill="currentColor" /> 执行突围
-                    <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
                 </button>
             </div>
         )}
