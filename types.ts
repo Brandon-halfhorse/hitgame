@@ -3,7 +3,7 @@ export enum GameStatus {
   IDLE = 'IDLE',
   PLAYING = 'PLAYING',
   LEVEL_TRANSITION = 'LEVEL_TRANSITION',
-  WAREHOUSE = 'WAREHOUSE', // New Hub state
+  WAREHOUSE = 'WAREHOUSE', 
   GAME_OVER = 'GAME_OVER',
   VICTORY = 'VICTORY'
 }
@@ -12,7 +12,7 @@ export enum EntityType {
   PLAYER = 'PLAYER',
   ENEMY_MELEE = 'ENEMY_MELEE',
   ENEMY_BOSS = 'ENEMY_BOSS',
-  ALLY = 'ALLY' // New Ally type
+  ALLY = 'ALLY' 
 }
 
 export enum WeaponType {
@@ -58,7 +58,7 @@ export interface Entity {
   
   dashCooldown?: number;
   upgradeLevel?: number;
-  targetId?: string; // For Allies to target enemies
+  targetId?: string; 
 }
 
 export interface FloatingText {
@@ -82,7 +82,7 @@ export interface Task {
 export interface GameState {
   player: Entity;
   enemies: Entity[];
-  allies: Entity[]; // Track recruited teammates
+  allies: Entity[]; 
   items: Item[];
   particles: FloatingText[];
   level: number;
@@ -94,6 +94,7 @@ export interface GameState {
   shakeIntensity: number;
   hasRecruitedFriend: boolean;
   tasks: Task[];
+  deductionTarget: string; // The "correct" teammate for the mini-game
 }
 
 export interface InputState {
